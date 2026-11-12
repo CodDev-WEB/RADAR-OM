@@ -13,11 +13,9 @@
     // 05:00 UTC = 02:00 BRT abre o ciclo diário; a cada 10 min (02h–08h50 BRT) processa a fila
     "crons": ["0 5 * * *", "*/10 5-11 * * *"]
   },
-  "vars": {
-    // preencha após criar o projeto Supabase (valores públicos)
-    "SUPABASE_URL": "",
-    "SUPABASE_ANON_KEY": ""
-  },
-  // secret (NÃO coloque aqui): wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+  // As variáveis ficam no painel do Cloudflare (Settings → Variables and Secrets):
+  //   SUPABASE_URL, SUPABASE_ANON_KEY (texto) e SUPABASE_SERVICE_ROLE_KEY (Secret).
+  // keep_vars impede que cada deploy pelo GitHub apague o que foi cadastrado no painel.
+  "keep_vars": true,
   "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": true }, "head_sampling_rate": 1 }
 }
