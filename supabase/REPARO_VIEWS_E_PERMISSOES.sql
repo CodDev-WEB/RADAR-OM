@@ -334,6 +334,12 @@ alter default privileges in schema radar grant execute on functions to service_r
 alter role authenticator set pgrst.db_schemas = 'public, graphql_public, radar';
 notify pgrst, 'reload config';
 
+-- ===== views da API respeitam o RLS de quem consulta (de 009) =====
+do $$ declare v text; begin
+  for v in select table_name from information_schema.views where table_schema = 'radar' and table_name like 'api\_%' loop
+    execute format('alter view radar.%I set (security_invoker = true)', v);
+  end loop; end $$;
+
 -- ===== recarrega o cache de schema da API =====
 notify pgrst, 'reload schema';
 

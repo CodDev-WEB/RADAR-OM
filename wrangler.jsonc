@@ -10,8 +10,9 @@
     "run_worker_first": ["/api/*"]
   },
   "triggers": {
-    // 05:00 UTC = 02:00 BRT abre o ciclo diário; a cada 10 min (02h–08h50 BRT) processa a fila
-    "crons": ["0 5 * * *", "*/10 5-11 * * *"]
+    // a cada minuto: processa uma fatia da fila (até 23 tarefas, dentro das 50 subrequisições do plano gratuito);
+    // às 05:00 UTC (02:00 BRT) abre o ciclo diário
+    "crons": ["* * * * *"]
   },
   // Valores públicos do Supabase (a chave publishable só permite login; o acesso aos dados é controlado no Worker + RLS).
   "vars": {

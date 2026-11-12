@@ -1,61 +1,37 @@
-// Teste da API do Worker contra o PostgreSQL local (simulando o PostgREST/Auth do Supabase).
-import { execFileSync } from 'node:child_process'
-import worker, { tratarApi } from '../src/worker.js'
+// Testes das rotas HTTP do Worker (/api/config, /api/sincronizar-agora, interface) — sem rede.
+import worker, { tratarApi, cabecalhosChave } from '../src/worker.js'
 
-const psql = (sql: string) => execFileSync('su', ['postgres', '-c', `psql -h /tmp -d radar_om -At -c "${sql.replace(/"/g, '\\"')}"`]).toString().trim()
-const USERS: Record<string, string> = { 'tok-admin': '22222222-2222-2222-2222-222222222222', 'tok-consulta': '11111111-1111-1111-1111-111111111111' }
-let leituras = 0, authComChaveNova = 0, quebrarView = ''
-const fakeSupabase = (async (input: any, init: any = {}) => {
-  const u = new URL(String(input)); const h = new Headers(init.headers)
-  if (u.pathname === '/auth/v1/user') {
-    const id = USERS[(h.get('authorization') || '').replace('Bearer ', '')]
-    return id ? Response.json({ id }) : new Response('{}', { status: 401 })
-  }
-  if (h.get('apikey') !== env.SUPABASE_SERVICE_ROLE_KEY) return new Response('{}', { status: 401 })
-  if (h.get('authorization')) { authComChaveNova++; return new Response('{"message":"Invalid JWT"}', { status: 401 }) }
-  const view = u.pathname.replace('/rest/v1/', '')
-  if (view === 'perfis') {
-    const id = u.searchParams.get('usuario_id')!.replace('eq.', '')
-    return new Response(psql(`select coalesce(json_agg(json_build_object('perfil',perfil)),'[]') from radar.perfis where ativo and usuario_id='${id}'`))
-  }
-  if (view.startsWith(quebrarView) && quebrarView) return new Response(JSON.stringify({ code: 'PGRST205', message: `Could not find the table 'radar.${quebrarView}' in the schema cache` }), { status: 404 })
-  leituras++
-  const [a, b] = (h.get('range') || '0-999').split('-').map(Number)
-  return new Response(psql(`select coalesce(json_agg(t),'[]') from (select * from radar.${view} offset ${a} limit ${b - a + 1}) t`))
-}) as typeof fetch
-
-const env: any = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'anon', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_teste123',
-  ASSETS: { fetch: async () => new Response('<html>RADAR OM</html>') } }
 let falhas = 0
 const ok = (c: boolean, m: string) => { console.log(`${c ? '✔' : '✘'} ${m}`); if (!c) falhas++ }
+const ASSETS = { fetch: async () => new Response('<html>RADAR OM</html>') }
+const env: any = { ASSETS, SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'sb_publishable_p', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_s' }
+const USERS: Record<string, [string, string]> = { 'tok-admin': ['u1', 'ADMINISTRADOR'], 'tok-consulta': ['u2', 'CONSULTA'] }
+const rpcs: string[] = []; let chaveNoAuthorization = 0
+const fake = (async (input: any, init: any = {}) => {
+  const u = new URL(String(input)), h = new Headers(init.headers)
+  if (u.pathname === '/auth/v1/user') { const x = USERS[(h.get('authorization') || '').replace('Bearer ', '')]; return x ? Response.json({ id: x[0] }) : new Response('{}', { status: 401 }) }
+  if (h.get('apikey') !== 'sb_secret_s') return new Response('{}', { status: 401 })
+  if ((h.get('authorization') || '').includes('sb_')) { chaveNoAuthorization++; return new Response('{"message":"Invalid JWT"}', { status: 401 }) }
+  if (u.pathname === '/rest/v1/perfis') { const id = u.searchParams.get('usuario_id')!.replace('eq.', ''); const p = Object.values(USERS).find((x) => x[0] === id); return Response.json(p ? [{ perfil: p[1] }] : []) }
+  if (u.pathname.startsWith('/rest/v1/rpc/')) { const fn = u.pathname.split('/').pop()!; rpcs.push(fn); return new Response(fn === 'iniciar_ciclo' ? '7' : fn === 'reservar_tarefas' ? '[]' : 'null') }
+  return new Response('{}', { status: 404 })
+}) as typeof fetch
 const req = (p: string, tok?: string, method = 'GET') => new Request('https://radar-om.workers.dev' + p, { method, headers: tok ? { authorization: 'Bearer ' + tok } : {} })
+const esperas: Promise<unknown>[] = []; const ctx = { waitUntil: (p: Promise<unknown>) => { esperas.push(p) } }
 
-const cfgDemo = await (await tratarApi(req('/api/config'), { ASSETS: env.ASSETS } as any)).json()
-ok(cfgDemo.modo === 'demonstracao' && cfgDemo.faltando.length === 3, 'sem variáveis → modo demonstração, lista o que falta')
-const cfgAlias = await (await tratarApi(req('/api/config'), { ASSETS: env.ASSETS, SUPABASE_URL: 'https://x.supabase.co/', SUPABASE_PUBLISHABLE_KEY: 'p', SUPABASE_SECRET_KEY: 'sb_secret_z' } as any)).json()
-ok(cfgAlias.modo === 'producao' && cfgAlias.supabaseUrl === 'https://x.supabase.co', 'aceita SUPABASE_SECRET_KEY / SUPABASE_PUBLISHABLE_KEY e remove barra final da URL')
-const cfgSoSecret = await (await tratarApi(req('/api/config'), { ASSETS: env.ASSETS, SUPABASE_URL: 'u', SUPABASE_ANON_KEY: 'a' } as any)).json()
-ok(JSON.stringify(cfgSoSecret.faltando) === JSON.stringify(['SUPABASE_SERVICE_ROLE_KEY (chave secret, tipo Secret)']), 'aponta exatamente o secret ausente')
-const cfg = await (await tratarApi(req('/api/config'), env, fakeSupabase)).json()
-ok(cfg.modo === 'producao' && cfg.supabaseAnonKey === 'anon' && !JSON.stringify(cfg).includes('sb_secret_teste123'), '/api/config não expõe a chave service_role')
-ok((await tratarApi(req('/api/snapshot'), env, fakeSupabase)).status === 401, 'snapshot sem login → 401')
-ok((await tratarApi(req('/api/snapshot', 'tok-invalido'), env, fakeSupabase)).status === 401, 'token inválido → 401')
-const r = await tratarApi(req('/api/snapshot', 'tok-consulta'), env, fakeSupabase)
-const S: any = await r.json()
-ok(r.status === 200 && S.perfil === 'CONSULTA', 'perfil CONSULTA lê o snapshot')
-ok(S.oms.length === 509 && S.atas.length === 602 && S.itens.length === 2795 && S.adesoes.length === 11, `contagens: ${S.oms.length} OM, ${S.atas.length} atas, ${S.itens.length} itens (paginado), ${S.adesoes.length} adesões`)
-ok(leituras >= 13, `paginação de 1000 em 1000 (${leituras} leituras)`)
-ok(S.fornecedores['10285037000167'] === 'IVM TELECOMUNICACOES LTDA', 'mapa de fornecedores montado')
-ok(typeof S.dash.om_monitoradas === 'number' && S.dash.om_monitoradas === 509, 'indicadores do dashboard')
-ok((await tratarApi(req('/api/sincronizar-agora', 'tok-consulta', 'POST'), env, fakeSupabase)).status === 403, 'CONSULTA não pode sincronizar → 403')
-ok(authComChaveNova === 0, 'chave sb_secret_ enviada só em apikey (nunca em Authorization)')
-const { cabecalhosChave } = await import('../src/armazenamento.js')
+const demo = await (await tratarApi(req('/api/config'), { ASSETS } as any)).json()
+ok(demo.modo === 'demonstracao' && demo.faltando.length === 3, 'sem variáveis → modo demonstração, lista o que falta (só nomes)')
+const alias = await (await tratarApi(req('/api/config'), { ASSETS, SUPABASE_URL: 'https://x.supabase.co/', SUPABASE_PUBLISHABLE_KEY: 'p', SUPABASE_SECRET_KEY: 'sb_secret_z' } as any)).json()
+ok(alias.modo === 'producao' && alias.supabaseUrl === 'https://x.supabase.co', 'aceita nomes alternativos e remove barra final da URL')
+const cfg = await (await tratarApi(req('/api/config'), env)).json()
+ok(cfg.modo === 'producao' && !JSON.stringify(cfg).includes('sb_secret_s'), '/api/config não expõe a chave secret')
+ok((await tratarApi(req('/api/sincronizar-agora', undefined, 'POST'), env, ctx, fake)).status === 401, 'sincronizar sem login → 401')
+ok((await tratarApi(req('/api/sincronizar-agora', 'tok-consulta', 'POST'), env, ctx, fake)).status === 403, 'CONSULTA não pode sincronizar → 403')
+const r = await tratarApi(req('/api/sincronizar-agora', 'tok-admin', 'POST'), env, ctx, fake); const b: any = await r.json()
+await Promise.all(esperas)
+ok(r.status === 200 && b.sincronizacao === 7 && rpcs.includes('iniciar_ciclo') && rpcs.includes('reservar_tarefas'), 'ADMINISTRADOR inicia o ciclo e a primeira fatia começa em segundo plano')
+ok(chaveNoAuthorization === 0, 'chave sb_secret_ enviada só em apikey (nunca em Authorization)')
 ok(!!cabecalhosChave('eyJhbGciOi.x.y').authorization && !cabecalhosChave('sb_secret_x').authorization, 'chave legada (JWT) mantém Authorization; chave nova não')
-quebrarView = 'api_sync'
-const rErr = await tratarApi(req('/api/snapshot', 'tok-consulta'), env, fakeSupabase); const bErr: any = await rErr.json()
-ok(rErr.status === 500 && bErr.erro.includes('radar.api_sync') && bErr.erro.includes('PGRST205'), 'erro de consulta informa a view e a causa')
-ok(bErr.diagnostico.filter((d: any) => !d.ok).map((d: any) => d.view).join() === 'api_sync' && !JSON.stringify(bErr).includes('sb_secret'), 'diagnóstico aponta só a view com problema, sem expor chave')
-quebrarView = ''
-const html = await (await worker.fetch(req('/'), env)).text()
-ok(html.includes('RADAR OM'), 'rotas fora de /api servem a interface')
+ok((await tratarApi(req('/api/snapshot', 'tok-admin'), env, ctx, fake)).status === 404, 'leitura de dados não passa pelo Worker (vai direto ao Supabase com RLS)')
+ok((await (await worker.fetch(req('/'), env, ctx)).text()).includes('RADAR OM'), 'rotas fora de /api servem a interface')
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM'); process.exit(falhas ? 1 : 0)

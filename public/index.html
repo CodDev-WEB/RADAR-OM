@@ -140,17 +140,45 @@ function telaLogin(msg){
     if(!r||!r.ok){document.getElementById('l_msg').textContent='E-mail ou senha incorretos.';return}
     SESS.set(await r.json()); iniciar();};
 }
+// leitura direta do Supabase com o token do usuário (RLS aplica o perfil); sem passar pelo Worker
+async function renovarSessao(){
+  const ses=SESS.get(); if(!ses||!ses.refresh_token) return null;
+  const r=await fetch(`${CFG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,'content-type':'application/json'},body:JSON.stringify({refresh_token:ses.refresh_token})}).catch(()=>null);
+  if(!r||!r.ok) return null; const nova=await r.json(); SESS.set(nova); return nova;
+}
+async function sb(caminho, init={}, tentou=false){
+  const ses=SESS.get();
+  const r=await fetch(`${CFG.supabaseUrl}/rest/v1/${caminho}`,{...init,headers:{apikey:CFG.supabaseAnonKey,authorization:'Bearer '+(ses&&ses.access_token),'accept-profile':'radar','content-profile':'radar','content-type':'application/json',...(init.headers||{})}});
+  if(r.status===401&&!tentou&&await renovarSessao()) return sb(caminho,init,true);
+  return r;
+}
+async function lerView(view){
+  const out=[];
+  for(let ini=0;;ini+=1000){
+    const r=await sb(`${view}?select=*`,{headers:{range:`${ini}-${ini+999}`,'range-unit':'items'}});
+    if(r.status===401) throw Object.assign(new Error('sessao'),{sessao:true});
+    if(!r.ok) throw Object.assign(new Error(`radar.${view}: HTTP ${r.status} — ${(await r.text()).slice(0,240)}`),{view});
+    const lote=await r.json(); out.push(...lote); if(lote.length<1000) return out;
+  }
+}
 async function carregarDados(){
   CFG = await fetch('/api/config').then(r=>r.json()).catch(()=>({modo:'demonstracao'}));
   if(CFG.modo!=='producao') return fetch('demo-snapshot.json').then(r=>r.json()).then(d=>({...d,modo:'demonstracao'}));
-  const ses=SESS.get(); if(!ses){telaLogin(); return null}
-  const r=await fetch('/api/snapshot',{headers:{authorization:'Bearer '+ses.access_token}});
-  if(r.status===401){SESS.clear(); telaLogin('Sessão expirada ou usuário sem perfil ativo. Entre novamente.'); return null}
-  if(!r.ok){const b=await r.json().catch(()=>({}));
-    const diag=(b.diagnostico||[]).map(d=>`<tr><td class="mono">radar.${esc(d.view)}</td><td><span class="pill ${d.ok?'p-ok':'p-crit'}">${d.ok?'OK':'HTTP '+d.status}</span></td><td class="mono">${esc(d.detalhe||'')}</td></tr>`).join('');
-    document.getElementById('view').innerHTML=`<div class="panel"><h2>Não foi possível carregar os dados</h2><p>${esc(b.erro||'Erro HTTP '+r.status)}</p>${diag?`<h3>Diagnóstico das consultas</h3><div class="tw"><table><thead><tr><th>View</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody>${diag}</tbody></table></div>`:''}<p><button class="btn" type="button" id="btnSair">Sair</button></p></div>`;
-    document.getElementById('btnSair').onclick=()=>{SESS.clear();location.reload()}; return null}
-  return r.json();
+  if(!SESS.get()){telaLogin(); return null}
+  const pr=await sb('rpc/meu_perfil',{method:'POST',body:'{}'});
+  const perfil=pr.ok?await pr.json():null;
+  if(!perfil){SESS.clear(); telaLogin('Sessão expirada ou usuário sem perfil ativo no RADAR OM. Entre novamente.'); return null}
+  const views=['api_oms','api_uasgs_ext','api_atas','api_itens','api_fornecedores','api_saldos','api_unidades','api_adesoes','api_contratos','api_sync','api_dashboard'].concat(perfil==='ADMINISTRADOR'?['api_fila']:[]);
+  const res=await Promise.allSettled(views.map(lerView));
+  if(res.some(x=>x.status==='rejected'&&x.reason&&x.reason.sessao)){SESS.clear(); telaLogin('Sessão expirada. Entre novamente.'); return null}
+  const falhas=res.map((x,k)=>({view:views[k],ok:x.status==='fulfilled',detalhe:x.status==='rejected'?String(x.reason.message||x.reason):''}));
+  if(falhas.some(x=>!x.ok)){
+    document.getElementById('view').innerHTML=`<div class="panel"><h2>Não foi possível carregar os dados</h2><p>Uma ou mais consultas ao banco falharam. Se o erro mencionar uma view inexistente, rode supabase/REPARO_VIEWS_E_PERMISSOES.sql no SQL Editor.</p><div class="tw"><table><thead><tr><th>View</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody>${falhas.map(d=>`<tr><td class="mono">radar.${esc(d.view)}</td><td><span class="pill ${d.ok?'p-ok':'p-crit'}">${d.ok?'OK':'falhou'}</span></td><td class="mono">${esc(d.detalhe)}</td></tr>`).join('')}</tbody></table></div><p><button class="btn" type="button" id="btnSair">Sair</button></p></div>`;
+    document.getElementById('btnSair').onclick=()=>{SESS.clear();location.reload()}; return null;
+  }
+  const [oms,uasgsExt,atas,itens,forn,saldos,unidades,adesoes,contratos,sync,dash,fila]=res.map(x=>x.value);
+  return {geradoEm:new Date().toISOString(),modo:'producao',perfil,oms,uasgsExt,atas,itens,saldos,unidades,adesoes,contratos,sync,dash:dash[0]||{},fila:fila||[],
+    fornecedores:Object.fromEntries(forn.map(x=>[x.ni,x.razao_social]))};
 }
 async function iniciar(){ const S0 = await carregarDados(); if(S0) app(S0); }
 document.getElementById('view').innerHTML='<p class="note">Carregando dados…</p>';
@@ -224,8 +252,9 @@ if(!document.querySelector('nav.side a'))document.getElementById('nav').insertAd
 const sync = S.sync?.[0];
 document.getElementById('meta').innerHTML = `<span><span class="dot"></span>Última atualização bem-sucedida: ${dt(sync?.finalizada_em)} ${sync?.finalizada_em?.slice(11,16)||''}</span><span>Novos: ${(sync?.reg_novos||0).toLocaleString('pt-BR')} · Erros: ${sync?.reg_erros||0}</span>`;
 document.getElementById('btnSync').onclick = async () => {
-  if(S.modo==='producao'){ const ses=SESS.get(); const r=await fetch('/api/sincronizar-agora',{method:'POST',headers:{authorization:'Bearer '+(ses&&ses.access_token)}}); const b=await r.json().catch(()=>({}));
-    toast(r.ok?`Sincronização iniciada. ${b.restantes||0} tarefa(s) seguem na fila.`:(b.erro||'Falha ao iniciar a sincronização.')); return; } document.getElementById('dlgBody').innerHTML = `<h2 style="font:600 20px var(--display);margin:0 0 8px">Atualizar dados agora</h2><p>Na versão implantada, este botão chama <span class="mono">POST /api/sincronizar-agora</span> no coletor (Cloudflare Worker), permitido só ao perfil ADMINISTRADOR. O coletor consulta as APIs oficiais e atualiza o banco; a página não precisa ficar aberta.</p><p class="note">Modo demonstração: o backend ainda não foi configurado, então não há sincronização. Configure SUPABASE_URL, SUPABASE_ANON_KEY e o secret SUPABASE_SERVICE_ROLE_KEY no Worker.</p>`; document.getElementById('dlg').showModal(); };
+  if(S.modo==='producao'){ if(S.perfil!=='ADMINISTRADOR'){toast('Apenas o perfil ADMINISTRADOR pode iniciar a sincronização.');return}
+    await renovarSessao(); const ses=SESS.get(); const r=await fetch('/api/sincronizar-agora',{method:'POST',headers:{authorization:'Bearer '+(ses&&ses.access_token)}}); const b=await r.json().catch(()=>({}));
+    toast(r.ok?'Coleta iniciada. Acompanhe em Integrações; os dados aparecem conforme a fila anda.':(b.erro||'Falha ao iniciar a sincronização.')); return; } document.getElementById('dlgBody').innerHTML = `<h2 style="font:600 20px var(--display);margin:0 0 8px">Atualizar dados agora</h2><p>Na versão implantada, este botão chama <span class="mono">POST /api/sincronizar-agora</span> no coletor (Cloudflare Worker), permitido só ao perfil ADMINISTRADOR. O coletor consulta as APIs oficiais e atualiza o banco; a página não precisa ficar aberta.</p><p class="note">Modo demonstração: o backend ainda não foi configurado, então não há sincronização. Configure SUPABASE_URL, SUPABASE_ANON_KEY e o secret SUPABASE_SERVICE_ROLE_KEY no Worker.</p>`; document.getElementById('dlg').showModal(); };
 
 const V = {};
 V.dashboard = () => {
@@ -490,8 +519,9 @@ V.integracoes = () => {
   return `<div class="panel"><h2>Status das fontes oficiais</h2><p class="note">Testes reais em 12/11/2026. Fonte: especificação OpenAPI em dadosabertos.compras.gov.br/v3/api-docs e pncp.gov.br/api/consulta/v3/api-docs.</p>
   ${tabela([{h:'Fonte',f:r=>r[0]},{h:'Endpoint',f:r=>`<span class="mono">${esc(r[1])}</span>`},{h:'Uso no RADAR OM',f:r=>esc(r[2])},{h:'Teste',f:r=>`<span class="pill ${r[3].startsWith('OK')?'p-ok':r[3]==='NÃO USADO'?'p-mute':'p-warn'}">${r[3]}</span>`},{h:'Observação',f:r=>esc(r[4])}],E,{pag:30})}</div>
   <div class="panel"><h2>Histórico de sincronizações</h2>${tabela([{h:'#',n:1,f:s=>s.id},{h:'Tipo',f:s=>s.tipo},{h:'Início',f:s=>dt(s.iniciada_em)+' '+s.iniciada_em.slice(11,16)},{h:'Fim',f:s=>s.finalizada_em?dt(s.finalizada_em)+' '+s.finalizada_em.slice(11,16):'—'},{h:'Status',f:s=>`<span class="pill ${s.status==='SUCESSO'?'p-ok':'p-warn'}">${s.status}</span>`},{h:'Novos',n:1,f:s=>s.reg_novos},{h:'Atualizados',n:1,f:s=>s.reg_atualizados},{h:'Erros',n:1,f:s=>s.reg_erros},{h:'Observações',f:s=>esc(s.observacoes)}],S.sync)}</div>
-  <div class="panel"><h2>Ciclo diário</h2><div class="calc">02h00 BRT  início: cadastro de UASGs (2 req) → enfileira 509 UASGs + consultas incrementais do PNCP
-a cada 10 min até 08h50  processa uma fatia da fila (~120 tarefas), respeitando ~100 req/min
+  ${S.modo==='producao'&&S.perfil==='ADMINISTRADOR'?`<div class="panel"><h2>Fila de coleta</h2><p class="note">Cada tarefa = 1 consulta à API oficial + 1 gravação no banco. O Worker processa até 23 tarefas por minuto (limite do plano gratuito do Cloudflare).</p>${tabela([{h:'Tarefa',f:x=>esc(x.tarefa)},{h:'Situação',f:x=>`<span class="pill ${x.status==='OK'?'p-ok':x.status==='ERRO'?'p-crit':'p-info'}">${esc(x.status)}</span>`},{h:'Quantidade',n:1,f:x=>Number(x.qtd).toLocaleString('pt-BR')},{h:'Próxima execução',f:x=>x.proxima?dt(x.proxima)+' '+x.proxima.slice(11,16):'—'},{h:'Última atividade',f:x=>x.ultima_atividade?dt(x.ultima_atividade)+' '+x.ultima_atividade.slice(11,16):'—'}],(S.fila||[]).slice().sort((a,b)=>a.tarefa.localeCompare(b.tarefa)),{pag:30})}</div>`:''}
+  <div class="panel"><h2>Ciclo diário</h2><div class="calc">02h00 BRT  início: cadastro oficial de UASGs → cada UASG do Exército gera 4 janelas de atas + consultas incrementais do PNCP
+a cada minuto  o Worker processa até 23 tarefas (1 consulta à API + 1 gravação via radar.ingerir no banco)
   ATAS_UASG       atas com fim de vigência de ontem a +3 anos (janelas de 365 dias)
   ITENS_ATA       só para atas novas ou alteradas (dataHoraAtualizacao)
   UNIDADES_ITEM   limites e saldo de adesões por item

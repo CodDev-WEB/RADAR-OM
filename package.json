@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc -p collector",
-    "test": "tsx collector/test/fetch-workers.test.ts && tsx collector/test/sincronizacao.test.ts && tsx collector/test/api.test.ts"
+    "test": "tsx collector/test/api.test.ts && tsx collector/test/coleta.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

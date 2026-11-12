@@ -1,23 +1,34 @@
-// RADAR OM — Cloudflare Worker único:
-//   • serve a interface (static assets em ./public)
-//   • /api/*  (configuração pública, dados autenticados, sincronização manual)
-//   • Cron Triggers: ciclo diário 02h00 BRT + fatias a cada 10 min
-import { ClienteApi } from './http.js'
-import { SupabaseRest, cabecalhosChave } from './armazenamento.js'
-import { Sincronizador, type Contexto } from './sincronizacao.js'
+// RADAR OM — Cloudflare Worker (compatível com o plano GRATUITO: 50 subrequisições e 10 ms de CPU por execução)
+//
+//   • serve a interface (public/)
+//   • /api/config            → configuração pública (modo, URL e chave publishable do Supabase)
+//   • /api/sincronizar-agora → ADMINISTRADOR inicia um ciclo de coleta
+//   • cron a cada minuto     → processa uma fatia da fila de coleta
+//
+// O Worker é uma ponte: busca a página na API oficial e entrega o TEXTO BRUTO a radar.ingerir() no Postgres,
+// que interpreta, grava e enfileira os próximos passos. Cada tarefa custa 2 subrequisições e quase nada de CPU.
+// A interface lê os dados direto do Supabase com o login do usuário (RLS), sem passar pelo Worker.
 
 interface Fetcher { fetch(req: Request): Promise<Response> }
 export interface Env {
   ASSETS: Fetcher
-  SUPABASE_URL?: string               // var
-  SUPABASE_ANON_KEY?: string          // var: chave publishable (sb_publishable_…) ou anon legada — pública, só login
-  SUPABASE_SERVICE_ROLE_KEY?: string  // SECRET: chave secret (sb_secret_…) ou service_role legada — nunca sai do Worker
-  SUPABASE_SECRET_KEY?: string        // nome alternativo aceito para a chave secret
-  SUPABASE_PUBLISHABLE_KEY?: string   // nome alternativo aceito para a chave publishable
+  SUPABASE_URL?: string
+  SUPABASE_ANON_KEY?: string           // chave publishable (sb_publishable_…) — pública, só login
+  SUPABASE_PUBLISHABLE_KEY?: string    // nome alternativo
+  SUPABASE_SERVICE_ROLE_KEY?: string   // SECRET: chave secret (sb_secret_…) — nunca sai do Worker
+  SUPABASE_SECRET_KEY?: string         // nome alternativo
+  COLETA_MAX_SUBREQ?: string           // padrão 48 (plano gratuito: 50)
+}
+type F = typeof fetch
+// fetch nunca é guardado como propriedade: no Workers isso gera "Illegal invocation"
+const fetchPadrao: F = (input, init) => fetch(input, init)
+
+/** chaves novas (sb_…) não são JWT: vão só em `apikey`; chaves legadas (JWT) também em Authorization */
+export function cabecalhosChave(chave: string): Record<string, string> {
+  return chave.startsWith('eyJ') ? { apikey: chave, authorization: `Bearer ${chave}` } : { apikey: chave }
 }
 
-/** normaliza nomes alternativos de variáveis (o painel do Supabase usa "publishable" e "secret") */
-function normalizar(env: Env): Env {
+export function normalizar(env: Env): Env {
   return { ...env,
     SUPABASE_URL: env.SUPABASE_URL?.trim().replace(/\/+$/, ''),
     SUPABASE_ANON_KEY: (env.SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY)?.trim(),
@@ -30,18 +41,65 @@ const faltando = (env: Env) => [
 ].filter(Boolean) as string[]
 const configurado = (env: Env) => faltando(env).length === 0
 
-function contexto(env: Env): Contexto {
-  const db = new SupabaseRest(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!)
-  const log: Contexto['log'] = (nivel, msg, extra) => console.log(JSON.stringify({ nivel, msg, ...extra }))
-  return {
-    db, log,
-    compras: new ClienteApi({ baseUrl: 'https://dadosabertos.compras.gov.br', intervaloMinMs: 650, log }),
-    pncp: new ClienteApi({ baseUrl: 'https://pncp.gov.br/api/consulta', intervaloMinMs: 300, timeoutMs: 90_000, log }),
+/** chama uma função do schema radar com a chave de serviço; `corpo` pode ser texto JSON já montado */
+export async function rpc<T = unknown>(env: Env, fn: string, corpo: string | object, f: F = fetchPadrao): Promise<T> {
+  const r = await f(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!), 'content-type': 'application/json', 'content-profile': 'radar', 'accept-profile': 'radar' },
+    body: typeof corpo === 'string' ? corpo : JSON.stringify(corpo),
+  })
+  const txt = await r.text()
+  if (!r.ok) throw new Error(`radar.${fn}: HTTP ${r.status} — ${txt.slice(0, 300)}`)
+  return (txt ? JSON.parse(txt) : null) as T
+}
+
+const BASE: Record<number, string> = { 1: 'https://dadosabertos.compras.gov.br', 2: 'https://pncp.gov.br/api/consulta' }
+interface Tarefa { id: number; tarefa: string; fonte_id: number; endpoint: string; params: Record<string, unknown> }
+
+export interface OpcoesFila { maxSubreq?: number; prazoMs?: number; intervaloMs?: number; timeoutMs?: number; f?: F; sleep?: (ms: number) => Promise<void>; agora?: () => number }
+
+/** processa uma fatia da fila dentro do orçamento de subrequisições e de tempo */
+export async function processarFila(env: Env, o: OpcoesFila = {}) {
+  const f = o.f ?? fetchPadrao, agora = o.agora ?? Date.now
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const maxSubreq = o.maxSubreq ?? (Number(env.COLETA_MAX_SUBREQ) || 48)
+  const prazoMs = o.prazoMs ?? 25_000, intervaloMs = o.intervaloMs ?? 650, timeoutMs = o.timeoutMs ?? 20_000
+  const inicio = agora()
+  let sub = 0
+  // 1 (reserva) + 2 por tarefa + 1 (devolução eventual)
+  const tarefas = await rpc<Tarefa[]>(env, 'reservar_tarefas', { p_limite: Math.max(1, Math.floor((maxSubreq - 2) / 2)) }, f); sub++
+  const res = { reservadas: tarefas.length, processadas: 0, limiteTaxa: 0, erros: 0, devolvidas: 0, subrequisicoes: 0 }
+  let i = 0
+  for (; i < tarefas.length; i++) {
+    if (agora() - inicio > prazoMs) break
+    const t = tarefas[i]
+    if (i > 0) await sleep(intervaloMs)
+    const qs = new URLSearchParams(Object.entries(t.params).map(([k, v]) => [k, String(v)]))
+    let status = 0, texto = ''
+    try {
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeoutMs)
+      const r = await f(`${BASE[t.fonte_id]}${t.endpoint}?${qs}`, { headers: { accept: 'application/json' }, signal: ctl.signal })
+      clearTimeout(tm); status = r.status; texto = await r.text()
+    } catch (e) { status = 0; texto = `falha de rede: ${String(e)}` }
+    sub++
+    // texto bruto vai direto ao banco (sem JSON.parse aqui → CPU mínima)
+    const limpo = texto.trim(), ehJson = limpo.startsWith('{') || limpo.startsWith('[')
+    const ok = status >= 200 && status < 300
+    const http = ok && limpo && !ehJson ? 502 : status
+    const resposta = ok && ehJson ? limpo : ok && !limpo ? 'null' : JSON.stringify(texto.slice(0, 1000))
+    await rpc(env, 'ingerir', `{"p_id":${t.id},"p_http":${http},"p_resposta":${resposta}}`, f); sub++
+    res.processadas++
+    if (!ok && status !== 429) res.erros++
+    if (status === 429) { res.limiteTaxa++; i++; break }   // a API pediu pausa: devolve o resto
   }
+  const resto = tarefas.slice(i).map((t) => t.id)
+  if (resto.length) { await rpc(env, 'devolver_tarefas', { p_ids: resto, p_segundos: res.limiteTaxa ? 20 : 0 }, f); sub++ }
+  res.devolvidas = resto.length; res.subrequisicoes = sub
+  return res
 }
 
 /** valida o JWT do Supabase Auth e devolve o perfil ativo (ou null) */
-export async function perfilDoUsuario(env: Env, req: Request, f: typeof fetch = fetch): Promise<string | null> {
+export async function perfilDoUsuario(env: Env, req: Request, f: F = fetchPadrao): Promise<string | null> {
   const jwt = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!jwt) return null
   const u = await f(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${jwt}` } })
@@ -54,113 +112,55 @@ export async function perfilDoUsuario(env: Env, req: Request, f: typeof fetch = 
   return p[0]?.perfil ?? null
 }
 
-/** lê uma view inteira paginando (PostgREST limita linhas por resposta) */
-async function lerTudo(env: Env, view: string, f: typeof fetch): Promise<unknown[]> {
-  const out: unknown[] = []
-  for (let ini = 0; ; ini += 1000) {
-    const r = await f(`${env.SUPABASE_URL}/rest/v1/${view}?select=*`, {
-      headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!),
-                 'accept-profile': 'radar', range: `${ini}-${ini + 999}`, 'range-unit': 'items' },
-    })
-    if (!r.ok) throw new Error(`falha ao ler radar.${view}: HTTP ${r.status} — ${(await r.text()).slice(0, 300)}`)
-    const lote = (await r.json()) as unknown[]
-    out.push(...lote)
-    if (lote.length < 1000) return out
-  }
-}
-
-/** monta o snapshot no formato que a interface consome */
-export const VIEWS_API = ['api_oms', 'api_uasgs_ext', 'api_atas', 'api_itens', 'api_fornecedores', 'api_saldos', 'api_unidades', 'api_adesoes', 'api_contratos', 'api_sync', 'api_dashboard'] as const
-
-/** testa cada view isoladamente — mostra exatamente qual consulta falha e por quê */
-export async function diagnosticar(env: Env, f: typeof fetch = fetch) {
-  return Promise.all(VIEWS_API.map(async (view) => {
-    const r = await f(`${env.SUPABASE_URL}/rest/v1/${view}?select=*&limit=1`, { headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!), 'accept-profile': 'radar' } })
-    return { view, ok: r.ok, status: r.status, detalhe: r.ok ? undefined : (await r.text()).slice(0, 300) }
-  }))
-}
-
-async function montarSnapshot(env: Env, f: typeof fetch = fetch) {
-  const [oms, uasgsExt, atas, itens, forn, saldos, unidades, adesoes, contratos, sync, dash] = await Promise.all(
-    VIEWS_API.map((v) => lerTudo(env, v, f)))
-  return {
-    geradoEm: new Date().toISOString(), modo: 'producao',
-    oms, uasgsExt, atas, itens, saldos, unidades, adesoes, contratos, sync, dash: dash[0] ?? {},
-    fornecedores: Object.fromEntries((forn as Array<{ ni: string; razao_social: string }>).map((x) => [x.ni, x.razao_social])),
-  }
-}
-
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), {
   status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
 })
 
-export async function tratarApi(req: Request, envBruto: Env, f: typeof fetch = fetch): Promise<Response> {
+export async function tratarApi(req: Request, envBruto: Env, ctx?: { waitUntil(p: Promise<unknown>): void }, f: F = fetchPadrao): Promise<Response> {
   const env = normalizar(envBruto)
   const url = new URL(req.url)
   if (url.pathname === '/api/config') {
-    // anon key do Supabase é pública por desenho (só permite login); service key nunca é exposta
-    // só NOMES das variáveis ausentes — nunca valores
+    // só NOMES das variáveis ausentes — nunca valores; a chave publishable é pública por desenho
     return json(configurado(env) ? { modo: 'producao', supabaseUrl: env.SUPABASE_URL, supabaseAnonKey: env.SUPABASE_ANON_KEY } : { modo: 'demonstracao', faltando: faltando(env) })
   }
   if (!configurado(env)) return json({ erro: `Backend não configurado. Falta: ${faltando(env).join(', ')}.` }, 503)
 
-  const perfil = await perfilDoUsuario(env, req, f)
-  if (!perfil) return json({ erro: 'Faça login com um usuário ativo no RADAR OM.' }, 401)
-
-  if (req.method === 'GET' && url.pathname === '/api/snapshot') {
-    try { return json({ ...(await montarSnapshot(env, f)), perfil }) }
-    catch (e) {
-      // usuário autenticado vê a causa (sem chaves); detalhe completo por view em /api/diagnostico
-      return json({ erro: `Falha ao consultar o banco: ${String(e).replace(/^Error:\s*/, '')}`, diagnostico: await diagnosticar(env, f) }, 500)
-    }
-  }
-  if (req.method === 'GET' && url.pathname === '/api/diagnostico') return json({ perfil, views: await diagnosticar(env, f) })
-
   if (req.method === 'POST' && url.pathname === '/api/sincronizar-agora') {
+    const perfil = await perfilDoUsuario(env, req, f)                       // 2 subrequisições
+    if (!perfil) return json({ erro: 'Faça login com um usuário ativo no RADAR OM.' }, 401)
     if (perfil !== 'ADMINISTRADOR') return json({ erro: 'Apenas o perfil ADMINISTRADOR pode iniciar a sincronização.' }, 403)
-    const x = contexto(env)
-    let etapa = 'abrir a sincronização no banco'
     try {
-      const s = await Sincronizador.iniciar(x, 'MANUAL', (e) => { etapa = e })
-      etapa = 'processar a primeira fatia da fila'
-      const r = await s.processarFatia(40)
-      return json({ iniciado: true, restantes: r.restantes, aviso: 'As tarefas restantes serão processadas pelo cron a cada 10 minutos.' })
+      const id = await rpc<number>(env, 'iniciar_ciclo', { p_tipo: 'MANUAL' }, f)  // 1 subrequisição
+      // começa já, com o orçamento que sobrou; o cron continua a cada minuto
+      ctx?.waitUntil(processarFila(env, { maxSubreq: 44, prazoMs: 25_000, f }).catch((e) => console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) }))))
+      return json({ iniciado: true, sincronizacao: id, aviso: 'Coleta iniciada. O processamento continua automaticamente a cada minuto.' })
     } catch (e) {
-      // somente ADMINISTRADOR chega aqui; a mensagem não contém chaves
-      return json({ erro: `Falha ao ${etapa}: ${String(e).replace(/^Error:\s*/, '').slice(0, 600)}` }, 500)
+      return json({ erro: `Falha ao iniciar a sincronização: ${String(e).replace(/^Error:\s*/, '').slice(0, 500)}` }, 500)
     }
   }
   return json({ erro: 'rota não encontrada' }, 404)
 }
 
-async function syncAtual(x: Contexto): Promise<number | null> {
-  const r = await x.db.select('sincronizacoes', 'select=id&status=eq.EM_ANDAMENTO&order=id.desc&limit=1')
-  return r.length ? Number(r[0].id) : null
-}
-
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(req.url)
     if (url.pathname.startsWith('/api/')) {
-      try { return await tratarApi(req, env) }
-      catch (e) { console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) })); return json({ erro: 'Erro interno ao consultar o banco.' }, 500) }
+      try { return await tratarApi(req, env, ctx) }
+      catch (e) { console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) })); return json({ erro: 'Erro interno no Worker.' }, 500) }
     }
     return env.ASSETS.fetch(req)
   },
 
-  async scheduled(evento: { cron: string }, envBruto: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
+  // cron "* * * * *": às 05:00 UTC (02:00 BRT) abre o ciclo diário; em todos os minutos processa uma fatia
+  async scheduled(evento: { scheduledTime: number }, envBruto: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
     const env = normalizar(envBruto)
-    if (!configurado(env)) { console.log('cron ignorado: backend não configurado'); return }
-    const x = contexto(env)
+    if (!configurado(env)) return
     ctx.waitUntil((async () => {
-      const id = await syncAtual(x)
-      // só o cron das 05:00 UTC abre ciclo; os de 10 em 10 min apenas continuam um ciclo aberto
-      if (evento.cron === '0 5 * * *') {
-        if (id !== null) await x.db.update('sincronizacoes', `id=eq.${id}`, { status: 'SUCESSO_PARCIAL', finalizada_em: new Date().toISOString(), observacoes: 'encerrada pelo início do ciclo seguinte' })
-        await (await Sincronizador.iniciar(x, 'DIARIA')).processarFatia(120)
-      } else if (id !== null) {
-        await new Sincronizador(x, id).processarFatia(120)
-      }
-    })())
+      const d = new Date(evento.scheduledTime)
+      let orcamento = Number(env.COLETA_MAX_SUBREQ) || 48
+      if (d.getUTCHours() === 5 && d.getUTCMinutes() === 0) { await rpc(env, 'iniciar_ciclo', { p_tipo: 'DIARIA' }); orcamento -= 1 }
+      const r = await processarFila(env, { maxSubreq: orcamento })
+      if (r.reservadas) console.log(JSON.stringify({ nivel: 'INFO', msg: 'fatia processada', ...r }))
+    })().catch((e) => console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) }))))
   },
 }
