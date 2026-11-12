@@ -14,7 +14,8 @@ supabase/migrations/  (aplicadas em ordem pela integração Supabase ↔ GitHub)
   202611120006_classificacao.sql     classificar_itens() e v_itens_classificados
   202611120007_api_views.sql         views api_* lidas pelo Worker
   202611120008_supabase_permissoes.sql  grants do schema radar e exposição na API REST
-supabase/INSTALACAO_COMPLETA_SUPABASE.sql  as 8 migrações num arquivo só, para o SQL Editor
+supabase/INSTALACAO_COMPLETA_SUPABASE.sql  as 8 migrações num arquivo só, para banco VAZIO
+supabase/REPARO_VIEWS_E_PERMISSOES.sql     recria views e permissões (pode rodar várias vezes; não apaga dados)
 wrangler.jsonc              Worker "radar-om": interface (public/) + /api/* + Cron Triggers
 public/index.html           interface (13 módulos); sem backend abre em modo demonstração
 public/demo-snapshot.json   coleta real de 12/11/2026 usada no modo demonstração
