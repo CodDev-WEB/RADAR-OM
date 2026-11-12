@@ -17,7 +17,11 @@ export interface Armazenamento {
 }
 
 export class SupabaseRest implements Armazenamento {
-  constructor(private url: string, private chave: string, private schema = 'radar', private f: typeof fetch = fetch) {}
+  private f: typeof fetch
+  // fetch nunca é guardado "solto" como propriedade: no Workers isso gera "Illegal invocation"
+  constructor(private url: string, private chave: string, private schema = 'radar', f?: typeof fetch) {
+    this.f = f ?? ((input, init) => fetch(input, init))
+  }
 
   private h(extra: Record<string, string> = {}) {
     return { ...cabecalhosChave(this.chave), 'content-type': 'application/json',

@@ -30,7 +30,8 @@ export class ClienteApi {
   private readonly sleep: (ms: number) => Promise<void>
 
   constructor(private o: OpcoesCliente) {
-    this.f = o.fetchImpl ?? fetch
+    // envolve fetch numa função: guardado como propriedade, o fetch do Workers dá "Illegal invocation"
+    this.f = o.fetchImpl ?? ((input, init) => fetch(input, init))
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
   }
 
