@@ -2,6 +2,13 @@
 // A chave service_role fica SOMENTE no backend (secret do Worker/Edge Function).
 type Linha = Record<string, unknown>
 
+/** Cabeçalhos de autenticação de serviço no Supabase.
+ *  Chaves novas (sb_secret_/sb_publishable_) não são JWT: vão SOMENTE em `apikey`.
+ *  Chaves legadas (JWT service_role/anon, começam com "eyJ") vão em `apikey` e `Authorization`. */
+export function cabecalhosChave(chave: string): Record<string, string> {
+  return chave.startsWith('eyJ') ? { apikey: chave, authorization: `Bearer ${chave}` } : { apikey: chave }
+}
+
 export interface Armazenamento {
   upsert(tabela: string, linhas: Linha[], conflito: string, ignorarDuplicados?: boolean): Promise<Linha[]>
   select(tabela: string, filtro: string): Promise<Linha[]>
@@ -13,7 +20,7 @@ export class SupabaseRest implements Armazenamento {
   constructor(private url: string, private chave: string, private schema = 'radar', private f: typeof fetch = fetch) {}
 
   private h(extra: Record<string, string> = {}) {
-    return { apikey: this.chave, authorization: `Bearer ${this.chave}`, 'content-type': 'application/json',
+    return { ...cabecalhosChave(this.chave), 'content-type': 'application/json',
              'accept-profile': this.schema, 'content-profile': this.schema, ...extra }
   }
   private async ok(r: Response) {

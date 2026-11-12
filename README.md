@@ -37,8 +37,8 @@ scripts/stub_auth.sql       auth.uid() para testar RLS fora do Supabase
 1. **Cloudflare:** Workers & Pages → Create → *Import a repository* → `RADAR-OM`. Build command vazio; deploy command `npx wrangler deploy`. O primeiro deploy já publica a interface em **modo demonstração**.
 2. **Supabase:** com a integração GitHub ativa, as migrações de `supabase/migrations/` são aplicadas automaticamente. Sem a integração, cole `supabase/INSTALACAO_COMPLETA_SUPABASE.sql` no SQL Editor. Depois confira em *Settings → API → Exposed schemas* que `radar` aparece (a migração 008 o inclui).
 3. **Variáveis do Worker** (Cloudflare → radar-om → Settings → Variables and Secrets):
-   - `SUPABASE_URL` e `SUPABASE_ANON_KEY` (texto)
-   - `SUPABASE_SERVICE_ROLE_KEY` (**Secret**)
+   - `SUPABASE_URL` e `SUPABASE_ANON_KEY` (chave publishable) — já definidas em `wrangler.jsonc`
+   - `SUPABASE_SERVICE_ROLE_KEY` (**Secret**) — a chave secret do Supabase (`sb_secret_…`), em *Project Settings → API Keys*
 4. **Primeiro usuário:** crie em Supabase → Authentication → Users e depois:
    `insert into radar.perfis(usuario_id,nome,email,perfil) values ('<uuid>','Nome','email','ADMINISTRADOR');`
 5. **Carga inicial:** entre como ADMINISTRADOR e clique em *Atualizar dados agora*; o cron continua a fila a cada 10 minutos (02h–08h50 BRT). A carga nacional completa leva de 2 a 4 dias por causa do limite de ~100 req/min da API.

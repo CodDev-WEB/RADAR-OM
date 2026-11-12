@@ -13,9 +13,13 @@
     // 05:00 UTC = 02:00 BRT abre o ciclo diário; a cada 10 min (02h–08h50 BRT) processa a fila
     "crons": ["0 5 * * *", "*/10 5-11 * * *"]
   },
-  // As variáveis ficam no painel do Cloudflare (Settings → Variables and Secrets):
-  //   SUPABASE_URL, SUPABASE_ANON_KEY (texto) e SUPABASE_SERVICE_ROLE_KEY (Secret).
-  // keep_vars impede que cada deploy pelo GitHub apague o que foi cadastrado no painel.
+  // Valores públicos do Supabase (a chave publishable só permite login; o acesso aos dados é controlado no Worker + RLS).
+  "vars": {
+    "SUPABASE_URL": "https://abikjfiyrnbvtgtwzhtx.supabase.co",
+    "SUPABASE_ANON_KEY": "sb_publishable_nlBT1SZClhITjNXbOYMhTA_R1L8eJIk"
+  },
+  // A chave secret (sb_secret_…) NÃO vai aqui: cadastre no painel como Secret SUPABASE_SERVICE_ROLE_KEY.
+  // keep_vars impede que os deploys apaguem outras variáveis cadastradas no painel.
   "keep_vars": true,
   "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": true }, "head_sampling_rate": 1 }
 }

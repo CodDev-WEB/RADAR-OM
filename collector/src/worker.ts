@@ -3,15 +3,15 @@
 //   • /api/*  (configuração pública, dados autenticados, sincronização manual)
 //   • Cron Triggers: ciclo diário 02h00 BRT + fatias a cada 10 min
 import { ClienteApi } from './http.js'
-import { SupabaseRest } from './armazenamento.js'
+import { SupabaseRest, cabecalhosChave } from './armazenamento.js'
 import { Sincronizador, type Contexto } from './sincronizacao.js'
 
 interface Fetcher { fetch(req: Request): Promise<Response> }
 export interface Env {
   ASSETS: Fetcher
   SUPABASE_URL?: string               // var
-  SUPABASE_ANON_KEY?: string          // var (pública por natureza; usada só para login)
-  SUPABASE_SERVICE_ROLE_KEY?: string  // SECRET — nunca sai do Worker
+  SUPABASE_ANON_KEY?: string          // var: chave publishable (sb_publishable_…) ou anon legada — pública, só login
+  SUPABASE_SERVICE_ROLE_KEY?: string  // SECRET: chave secret (sb_secret_…) ou service_role legada — nunca sai do Worker
 }
 
 const configurado = (env: Env) => !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_ANON_KEY)
@@ -34,7 +34,7 @@ export async function perfilDoUsuario(env: Env, req: Request, f: typeof fetch = 
   if (!u.ok) return null
   const { id } = (await u.json()) as { id: string }
   const r = await f(`${env.SUPABASE_URL}/rest/v1/perfis?select=perfil&ativo=is.true&usuario_id=eq.${id}`, {
-    headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY!, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'accept-profile': 'radar' },
+    headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!), 'accept-profile': 'radar' },
   })
   const p = r.ok ? ((await r.json()) as Array<{ perfil: string }>) : []
   return p[0]?.perfil ?? null
@@ -45,7 +45,7 @@ async function lerTudo(env: Env, view: string, f: typeof fetch): Promise<unknown
   const out: unknown[] = []
   for (let ini = 0; ; ini += 1000) {
     const r = await f(`${env.SUPABASE_URL}/rest/v1/${view}?select=*`, {
-      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY!, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!),
                  'accept-profile': 'radar', range: `${ini}-${ini + 999}`, 'range-unit': 'items' },
     })
     if (!r.ok) throw new Error(`falha ao ler ${view}: HTTP ${r.status}`)
