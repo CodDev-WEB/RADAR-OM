@@ -70,6 +70,7 @@ const fakeFetch = (async (input: any, init: any = {}) => {
   return resp({ erro: 'rota não simulada ' + u.pathname }, 404)
 }) as typeof fetch
 
+let adesaoAntesDoFimDasAtas = false
 let falhas = 0
 const ok = (c: boolean, m: string) => { console.log(`${c ? '✔' : '✘'} ${m}`); if (!c) falhas++ }
 const ciclo = async () => {
@@ -78,6 +79,8 @@ const ciclo = async () => {
     subreqFatia = 0
     r = await processarFila(env, { f: fakeFetch, intervaloMs: 0, prazoMs: 1e9, sleep: async () => {} })
     maxSubreqVisto = Math.max(maxSubreqVisto, subreqFatia)
+    if (!adesaoAntesDoFimDasAtas && sql('select count(*) from radar.adesoes') !== '0'
+        && sql("select count(*) from radar.fila_coleta where tarefa='ATAS_UASG' and status<>'OK'") !== '0') adesaoAntesDoFimDasAtas = true
     if (r.subrequisicoes !== subreqFatia) throw new Error(`contagem de subrequisições divergente: ${r.subrequisicoes} x ${subreqFatia}`)
     fatias++
     // fila "dormindo" (tarefas devolvidas após 429 ou com espera): simula a passagem do tempo até o próximo cron
@@ -102,6 +105,7 @@ const vig8 = S("select count(*) from atas_registro_precos where codigo_uasg_gere
 ok(+vig8 >= 230, `atas do 8º BEC com vigência a partir de ontem carregadas: ${vig8}`)
 ok(S("select count(*) from atas_registro_precos where numero_ata='00032/2025' and codigo_uasg_gerenciadora='160047'") === '1', 'ata 00032/2025 (Cmdo 10ª RM) carregada pela varredura da UASG')
 ok(S("select count(*) from atas_registro_precos where numero_controle_pncp_ata='00394452000103-1-012882/2025-000001'") === '1', 'ata do 1º CGEO (já vencida) trazida como ATA_EXTERNA a partir do contrato PNCP fruto de adesão')
+ok(adesaoAntesDoFimDasAtas, 'coleta em profundidade: adesões aparecem antes de terminar a varredura de atas do país')
 ok(S('select count(*) from adesoes') === '11', `11 adesões (obtido ${S('select count(*) from adesoes')})`)
 ok(S("select count(*) from v_saldos_itens where status_saldo_adesoes='CONFERE_COM_A_FONTE'") === '3', 'saldo calculado confere com a fonte nos 3 itens com adesão')
 ok(S("select coalesce(pertence_exercito,false)::text from uasgs where codigo_uasg='767200'") === 'false', 'Casa do Marinheiro (767200) registrada fora do Exército')
