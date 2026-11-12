@@ -12,9 +12,23 @@ export interface Env {
   SUPABASE_URL?: string               // var
   SUPABASE_ANON_KEY?: string          // var: chave publishable (sb_publishable_…) ou anon legada — pública, só login
   SUPABASE_SERVICE_ROLE_KEY?: string  // SECRET: chave secret (sb_secret_…) ou service_role legada — nunca sai do Worker
+  SUPABASE_SECRET_KEY?: string        // nome alternativo aceito para a chave secret
+  SUPABASE_PUBLISHABLE_KEY?: string   // nome alternativo aceito para a chave publishable
 }
 
-const configurado = (env: Env) => !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_ANON_KEY)
+/** normaliza nomes alternativos de variáveis (o painel do Supabase usa "publishable" e "secret") */
+function normalizar(env: Env): Env {
+  return { ...env,
+    SUPABASE_URL: env.SUPABASE_URL?.trim().replace(/\/+$/, ''),
+    SUPABASE_ANON_KEY: (env.SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY)?.trim(),
+    SUPABASE_SERVICE_ROLE_KEY: (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY)?.trim() }
+}
+const faltando = (env: Env) => [
+  !env.SUPABASE_URL && 'SUPABASE_URL',
+  !env.SUPABASE_ANON_KEY && 'SUPABASE_ANON_KEY (chave publishable)',
+  !env.SUPABASE_SERVICE_ROLE_KEY && 'SUPABASE_SERVICE_ROLE_KEY (chave secret, tipo Secret)',
+].filter(Boolean) as string[]
+const configurado = (env: Env) => faltando(env).length === 0
 
 function contexto(env: Env): Contexto {
   const db = new SupabaseRest(env.SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -71,13 +85,15 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), {
   status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
 })
 
-export async function tratarApi(req: Request, env: Env, f: typeof fetch = fetch): Promise<Response> {
+export async function tratarApi(req: Request, envBruto: Env, f: typeof fetch = fetch): Promise<Response> {
+  const env = normalizar(envBruto)
   const url = new URL(req.url)
   if (url.pathname === '/api/config') {
     // anon key do Supabase é pública por desenho (só permite login); service key nunca é exposta
-    return json(configurado(env) ? { modo: 'producao', supabaseUrl: env.SUPABASE_URL, supabaseAnonKey: env.SUPABASE_ANON_KEY } : { modo: 'demonstracao' })
+    // só NOMES das variáveis ausentes — nunca valores
+    return json(configurado(env) ? { modo: 'producao', supabaseUrl: env.SUPABASE_URL, supabaseAnonKey: env.SUPABASE_ANON_KEY } : { modo: 'demonstracao', faltando: faltando(env) })
   }
-  if (!configurado(env)) return json({ erro: 'Backend não configurado: defina SUPABASE_URL, SUPABASE_ANON_KEY e o secret SUPABASE_SERVICE_ROLE_KEY.' }, 503)
+  if (!configurado(env)) return json({ erro: `Backend não configurado. Falta: ${faltando(env).join(', ')}.` }, 503)
 
   const perfil = await perfilDoUsuario(env, req, f)
   if (!perfil) return json({ erro: 'Faça login com um usuário ativo no RADAR OM.' }, 401)
@@ -109,7 +125,8 @@ export default {
     return env.ASSETS.fetch(req)
   },
 
-  async scheduled(evento: { cron: string }, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
+  async scheduled(evento: { cron: string }, envBruto: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
+    const env = normalizar(envBruto)
     if (!configurado(env)) { console.log('cron ignorado: backend não configurado'); return }
     const x = contexto(env)
     ctx.waitUntil((async () => {
