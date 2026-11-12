@@ -119,9 +119,16 @@ export async function tratarApi(req: Request, envBruto: Env, f: typeof fetch = f
   if (req.method === 'POST' && url.pathname === '/api/sincronizar-agora') {
     if (perfil !== 'ADMINISTRADOR') return json({ erro: 'Apenas o perfil ADMINISTRADOR pode iniciar a sincronização.' }, 403)
     const x = contexto(env)
-    const s = await Sincronizador.iniciar(x, 'MANUAL')
-    const r = await s.processarFatia(40)
-    return json({ iniciado: true, restantes: r.restantes, aviso: 'As tarefas restantes serão processadas pelo cron a cada 10 minutos.' })
+    let etapa = 'abrir a sincronização no banco'
+    try {
+      const s = await Sincronizador.iniciar(x, 'MANUAL', (e) => { etapa = e })
+      etapa = 'processar a primeira fatia da fila'
+      const r = await s.processarFatia(40)
+      return json({ iniciado: true, restantes: r.restantes, aviso: 'As tarefas restantes serão processadas pelo cron a cada 10 minutos.' })
+    } catch (e) {
+      // somente ADMINISTRADOR chega aqui; a mensagem não contém chaves
+      return json({ erro: `Falha ao ${etapa}: ${String(e).replace(/^Error:\s*/, '').slice(0, 600)}` }, 500)
+    }
   }
   return json({ erro: 'rota não encontrada' }, 404)
 }

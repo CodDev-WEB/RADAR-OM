@@ -25,16 +25,20 @@ export class Sincronizador {
   get hoje() { return this.x.hoje ?? new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10) } // America/Sao_Paulo
 
   // ---------- início do ciclo (02h00 BRT) ----------
-  static async iniciar(x: Contexto, tipo: 'DIARIA' | 'MANUAL' | 'BACKFILL'): Promise<Sincronizador> {
+  static async iniciar(x: Contexto, tipo: 'DIARIA' | 'MANUAL' | 'BACKFILL', etapa: (e: string) => void = () => {}): Promise<Sincronizador> {
+    etapa('registrar a sincronização (tabela radar.sincronizacoes)')
     const [s] = await x.db.upsert('sincronizacoes', [{ tipo, status: 'EM_ANDAMENTO' }], 'id')
     const sync = new Sincronizador(x, Number(s.id))
+    etapa('liberar tarefas presas (função radar.liberar_tarefas_presas)')
     await x.db.rpc('liberar_tarefas_presas', {})
+    etapa('consultar o cadastro de UASGs no Compras.gov.br')
     // 1) cadastro oficial de UASGs do Exército (identificação auditável — nunca pelo nome)
     for await (const pg of compras.uasgsExercito(x.compras)) {
       const pid = await sync.payload(1, pg)
       await x.db.upsert('uasgs', pg.registros.map((u) => mapear.uasg(u, pid)), 'codigo_uasg')
       await x.db.upsert('organizacoes_militares', pg.registros.map(mapear.omDeUasg), 'codigo_uasg', true)
     }
+    etapa('enfileirar as UASGs do Exército (tabela radar.fila_coleta)')
     const eb = await x.db.select('uasgs', 'select=codigo_uasg&pertence_exercito=is.true&ativa=is.true')
     const ontem = dia(sync.hoje, -1)
     await sync.enfileirar([
