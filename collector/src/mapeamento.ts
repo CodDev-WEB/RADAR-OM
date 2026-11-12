@@ -8,7 +8,15 @@ export function chaveAta(a: R): string {
     `SIASG:${a.codigoUnidadeGerenciadora}:${a.numeroAtaRegistroPreco}:${a.numeroCompra}/${a.anoCompra}`
 }
 
+const FORCA: Record<number, string> = { 52121: 'EXERCITO', 52131: 'MARINHA', 52111: 'AERONAUTICA', 52000: 'MD' }
+
 export const mapear = {
+  orgao: (o: R) => ({
+    codigo_orgao: Number(o.codigoOrgao), nome: o.nomeOrgao, sigla: nz(o.nomeMnemonicoOrgao), cnpj: nz(o.cnpjCpfOrgao),
+    codigo_orgao_vinculado: o.codigoOrgaoVinculado ?? null, nome_orgao_vinculado: nz(o.nomeOrgaoVinculado),
+    forca: FORCA[Number(o.codigoOrgao)] ?? 'OUTRO', fonte_id: 1, coletado_em: new Date().toISOString(),
+  }),
+
   uasg: (u: R, payloadId: number | null) => ({
     codigo_uasg: String(u.codigoUasg), nome: u.nomeUasg, codigo_orgao: u.codigoOrgao ?? null,
     cnpj_orgao: nz(u.cnpjCpfOrgao), uf: nz(u.siglaUf), municipio: nz(u.nomeMunicipioIbge),

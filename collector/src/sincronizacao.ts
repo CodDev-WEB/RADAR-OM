@@ -20,12 +20,15 @@ const dia = (base: string, delta: number) => new Date(Date.parse(base + 'T00:00:
 export class Sincronizador {
   private c: Contadores = { novos: 0, atualizados: 0, erros: 0 }
   private uasgsConhecidas = new Set<string>()
+  private orgaosConhecidos = new Set<number>()
   constructor(private x: Contexto, private syncId: number) {}
 
   get hoje() { return this.x.hoje ?? new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10) } // America/Sao_Paulo
 
   // ---------- início do ciclo (02h00 BRT) ----------
   static async iniciar(x: Contexto, tipo: 'DIARIA' | 'MANUAL' | 'BACKFILL', etapa: (e: string) => void = () => {}): Promise<Sincronizador> {
+    etapa('encerrar ciclo anterior ainda aberto')
+    await x.db.update('sincronizacoes', 'status=eq.EM_ANDAMENTO', { status: 'FALHA', finalizada_em: new Date().toISOString(), observacoes: `substituída por nova sincronização ${tipo}` })
     etapa('registrar a sincronização (tabela radar.sincronizacoes)')
     const [s] = await x.db.upsert('sincronizacoes', [{ tipo, status: 'EM_ANDAMENTO' }], 'id')
     const sync = new Sincronizador(x, Number(s.id))
@@ -33,6 +36,7 @@ export class Sincronizador {
     await x.db.rpc('liberar_tarefas_presas', {})
     etapa('consultar o cadastro de UASGs no Compras.gov.br')
     // 1) cadastro oficial de UASGs do Exército (identificação auditável — nunca pelo nome)
+    await sync.garantirOrgao(52121)
     for await (const pg of compras.uasgsExercito(x.compras)) {
       const pid = await sync.payload(1, pg)
       await x.db.upsert('uasgs', pg.registros.map((u) => mapear.uasg(u, pid)), 'codigo_uasg')
@@ -181,6 +185,19 @@ export class Sincronizador {
   }
 
   // ---------- utilitários ----------
+  /** órgão (FK de uasgs) vem do cadastro oficial; se não existir lá, registra só o código */
+  async garantirOrgao(codigo: number | null | undefined) {
+    if (codigo == null || this.orgaosConhecidos.has(codigo)) return
+    const ja = await this.x.db.select('orgaos_publicos', `select=codigo_orgao&codigo_orgao=eq.${codigo}`)
+    if (!ja.length) {
+      const regs: Record<string, any>[] = []
+      for await (const pg of compras.orgao(this.x.compras, codigo)) regs.push(...pg.registros)
+      await this.x.db.upsert('orgaos_publicos', regs.length ? regs.map(mapear.orgao)
+        : [{ codigo_orgao: codigo, nome: `Órgão ${codigo} (não localizado no cadastro)`, forca: 'OUTRO', fonte_id: 1 }], 'codigo_orgao', true)
+    }
+    this.orgaosConhecidos.add(codigo)
+  }
+
   /** UASG nunca vista: consulta o cadastro oficial para saber o órgão (Exército? Marinha?) */
   private async garantirUasg(codigo: string, nome?: string) {
     if (!codigo || this.uasgsConhecidas.has(codigo)) return
@@ -191,7 +208,10 @@ export class Sincronizador {
         const { corpo } = await c.getJson<any>('/modulo-uasg/1_consultarUasg', { statusUasg: 'true', codigoUasg: codigo })
         yield corpo?.resultado ?? []
       })(this.x.compras)) {
-        if (pg.length) { await this.x.db.upsert('uasgs', pg.map((u: any) => mapear.uasg(u, null)), 'codigo_uasg'); achou = true }
+        if (pg.length) {
+          for (const u of pg) await this.garantirOrgao(u.codigoOrgao)
+          await this.x.db.upsert('uasgs', pg.map((u: any) => mapear.uasg(u, null)), 'codigo_uasg'); achou = true
+        }
       }
       if (!achou) await this.x.db.upsert('uasgs', [{ codigo_uasg: codigo, nome: nome ?? codigo, codigo_orgao: null, fonte_id: 1 }], 'codigo_uasg', true)
     }

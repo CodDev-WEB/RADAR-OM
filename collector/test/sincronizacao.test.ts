@@ -28,6 +28,7 @@ const fakeFetch = (async (input: any) => {
   const u = new URL(String(input)); const p = Object.fromEntries(u.searchParams); chamadas.push(u.pathname)
   const json = (b: unknown, s = 200, h: Record<string, string> = {}) => new Response(JSON.stringify(b), { status: s, headers: h })
   if (u.pathname.endsWith('5_consultarAdesoesItem') && forcar429-- > 0) return json({ statusCode: 429 }, 429, { 'retry-after': '0' })
+  if (u.pathname.endsWith('2_consultarOrgao')) return json(env(p.codigoOrgao === '52121' ? [{ codigoOrgao: 52121, nomeOrgao: 'COMANDO DO EXERCITO', nomeMnemonicoOrgao: 'CMDO EX', cnpjCpfOrgao: '00394452000103', codigoOrgaoVinculado: 52000, nomeOrgaoVinculado: 'MINISTERIO DEFESA' }] : []))
   if (u.pathname.endsWith('1_consultarUasg')) return json(env(p.codigoUasg ? uasgs.filter((x) => x.codigoUasg === p.codigoUasg) : uasgs))
   if (u.pathname.endsWith('1.2_consultarARP_FimVigencia')) {
     const dias = (Date.parse(p.dataVigenciaFinalMax) - Date.parse(p.dataVigenciaFinalMin)) / 864e5
@@ -53,6 +54,9 @@ class Memoria implements Armazenamento {
   private calc(n: string, r: any) { return n === 'uasgs' ? { ...r, pertence_exercito: r.codigo_orgao === 52121 } : r }
   async upsert(n: string, linhas: any[], conflito: string, ignorar = false) {
     const ks = conflito.split(','); const T = this.tab(n); const out: any[] = []
+    // simula a FK uasgs.codigo_orgao → orgaos_publicos (erro 23503 que ocorreu no Supabase)
+    if (n === 'uasgs') for (const l of linhas) if (l.codigo_orgao != null && !this.tab('orgaos_publicos').some((o) => o.codigo_orgao === l.codigo_orgao))
+      throw new Error(`PostgREST 409: 23503 Key (codigo_orgao)=(${l.codigo_orgao}) is not present in table "orgaos_publicos"`)
     for (const l of linhas) {
       const ex = ks[0] === 'id' ? undefined : T.find((r) => ks.every((k) => JSON.stringify(r[k]) === JSON.stringify(l[k])))
       if (ex) { if (!ignorar) Object.assign(ex, l); if (!ignorar) out.push(ex) } else { const r = { id: this.seq++, ...l }; T.push(r); out.push(r) }
@@ -110,6 +114,7 @@ while (r.restantes > 0 && voltas++ < 50) r = await s.processarFatia(150)
 
 const T = db.t
 ok(T.uasgs.filter((u) => u.codigo_orgao === 52121).length === 509, '509 UASGs do Exército a partir do cadastro oficial')
+ok(T.orgaos_publicos?.[0]?.nome === 'COMANDO DO EXERCITO' && T.orgaos_publicos[0].forca === 'EXERCITO', 'órgão 52121 cadastrado a partir do cadastro oficial antes das UASGs')
 ok(T.fila_coleta.filter((f) => f.tarefa === 'ATAS_UASG').length === 509, '509 tarefas ATAS_UASG enfileiradas')
 ok(T.fila_coleta.every((f) => f.status === 'OK'), `fila concluída sem erros (${T.fila_coleta.length} tarefas)`)
 ok(!!T.atas_registro_precos?.find((a) => a.numero_ata === '00032/2025' && a.codigo_uasg_gerenciadora === '160047'), 'ata 00032/2025 do Cmdo 10ª RM descoberta a partir do contrato PNCP fruto de adesão')

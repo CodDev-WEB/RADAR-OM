@@ -33,6 +33,8 @@ export async function* paginarPncp<T>(c: ClienteApi, endpoint: string, params: R
 
 // ---------------- Compras.gov.br ----------------
 export const compras = {
+  orgao: (c: ClienteApi, codigoOrgao: number) =>
+    paginarCompras<Record<string, any>>(c, '/modulo-uasg/2_consultarOrgao', { statusOrgao: 'true', codigoOrgao }),
   uasgsExercito: (c: ClienteApi) =>
     paginarCompras<Record<string, any>>(c, '/modulo-uasg/1_consultarUasg', { statusUasg: 'true', cnpjCpfOrgao: CNPJ_EXERCITO }),
 
