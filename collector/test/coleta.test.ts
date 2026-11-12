@@ -52,7 +52,7 @@ const fakeFetch = (async (input: any, init: any = {}) => {
   chamadasGov.push(u.pathname)
   if (u.pathname.endsWith('5_consultarAdesoesItem') && forcar429-- > 0) return resp({ statusCode: 429 }, 429)
   if (u.pathname.endsWith('2_consultarOrgao')) return resp(env_(p.codigoOrgao === '52121' ? [{ codigoOrgao: 52121, nomeOrgao: 'COMANDO DO EXERCITO', nomeMnemonicoOrgao: 'CMDO EX', cnpjCpfOrgao: '00394452000103', codigoOrgaoVinculado: 52000, nomeOrgaoVinculado: 'MINISTERIO DEFESA' }] : []))
-  if (u.pathname.endsWith('1_consultarUasg')) return resp(env_(p.codigoUasg ? uasgs.filter((x) => x.codigoUasg === p.codigoUasg) : uasgs))
+  if (u.pathname.endsWith('1_consultarUasg')) return resp(env_(p.codigoUasg ? uasgs.filter((x) => x.codigoUasg === p.codigoUasg) : p.siglaUf ? uasgs.filter((x) => x.siglaUf === p.siglaUf) : uasgs))
   if (u.pathname.endsWith('1.2_consultarARP_FimVigencia')) {
     if ((Date.parse(p.dataVigenciaFinalMax) - Date.parse(p.dataVigenciaFinalMin)) / 864e5 > 365) return resp({ title: 'Período maior que 365 dias' }, 400)
     const todas = [...atasBec, ...atasValid].filter((a) => a.codigoUnidadeGerenciadora === p.codigoUnidadeGerenciadora
@@ -95,7 +95,8 @@ const S = (q: string) => sql(`set search_path=radar; ${q}`).split('\n').pop()!
 
 ok(maxSubreqVisto <= 48, `nenhuma execução passou de 48 subrequisições (máximo observado: ${maxSubreqVisto}; ${fatias1} execuções)`)
 ok(S("select nome||'/'||forca from orgaos_publicos where codigo_orgao=52121") === 'COMANDO DO EXERCITO/EXERCITO', 'órgão 52121 vindo do cadastro oficial')
-ok(S('select count(*) from uasgs where pertence_exercito') === '509', '509 UASGs do Exército')
+ok(S('select count(*) from uasgs where pertence_exercito') === '509', '509 UASGs do Exército (consultadas por UF)')
+ok(chamadasGov.filter((c) => c.endsWith('1_consultarUasg')).length >= 27, 'cadastro consultado em 27 chamadas pequenas (uma por UF)')
 ok(+S("select count(*) from organizacoes_militares where metodo_vinculo_rm='INFERIDO_POLO_CGCFEX'") === 470, 'RM inferida pelo CGCFEx em 470 OM (igual à carga anterior)')
 const vig8 = S("select count(*) from atas_registro_precos where codigo_uasg_gerenciadora='160171'")
 ok(+vig8 >= 230, `atas do 8º BEC com vigência a partir de ontem carregadas: ${vig8}`)

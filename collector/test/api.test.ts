@@ -29,7 +29,7 @@ ok((await tratarApi(req('/api/sincronizar-agora', undefined, 'POST'), env, ctx, 
 ok((await tratarApi(req('/api/sincronizar-agora', 'tok-consulta', 'POST'), env, ctx, fake)).status === 403, 'CONSULTA não pode sincronizar → 403')
 const r = await tratarApi(req('/api/sincronizar-agora', 'tok-admin', 'POST'), env, ctx, fake); const b: any = await r.json()
 await Promise.all(esperas)
-ok(r.status === 200 && b.sincronizacao === 7 && rpcs.includes('iniciar_ciclo') && rpcs.includes('reservar_tarefas'), 'ADMINISTRADOR inicia o ciclo e a primeira fatia começa em segundo plano')
+ok(r.status === 200 && b.sincronizacao === 7 && rpcs.join() === 'iniciar_ciclo', 'ADMINISTRADOR abre o ciclo; o processamento fica com o cron (sem tarefas presas)')
 ok(chaveNoAuthorization === 0, 'chave sb_secret_ enviada só em apikey (nunca em Authorization)')
 ok(!!cabecalhosChave('eyJhbGciOi.x.y').authorization && !cabecalhosChave('sb_secret_x').authorization, 'chave legada (JWT) mantém Authorization; chave nova não')
 ok((await tratarApi(req('/api/snapshot', 'tok-admin'), env, ctx, fake)).status === 404, 'leitura de dados não passa pelo Worker (vai direto ao Supabase com RLS)')

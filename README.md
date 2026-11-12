@@ -15,7 +15,8 @@ supabase/migrations/  (aplicadas em ordem pela integração Supabase ↔ GitHub)
   202611120007_api_views.sql         views api_* lidas pelo Worker
   202611120008_supabase_permissoes.sql  grants do schema radar e exposição na API REST
   202611120009_ingestao_sql.sql      radar.ingerir(): interpreta e grava as respostas das APIs (coleta no plano gratuito)
-supabase/INSTALACAO_COMPLETA_SUPABASE.sql  as 9 migrações num arquivo só, para banco VAZIO
+  202611120010_coleta_ajustes.sql    UASGs por UF, recuperação de tarefas presas, nova tentativa rápida após falha de rede
+supabase/INSTALACAO_COMPLETA_SUPABASE.sql  as 10 migrações num arquivo só, para banco VAZIO
 supabase/REPARO_VIEWS_E_PERMISSOES.sql     recria views e permissões (pode rodar várias vezes; não apaga dados)
 wrangler.jsonc              Worker "radar-om": interface (public/) + /api/* + Cron Triggers
 public/index.html           interface (13 módulos); sem backend abre em modo demonstração

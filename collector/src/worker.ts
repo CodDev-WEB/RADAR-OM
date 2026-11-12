@@ -63,7 +63,8 @@ export async function processarFila(env: Env, o: OpcoesFila = {}) {
   const f = o.f ?? fetchPadrao, agora = o.agora ?? Date.now
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   const maxSubreq = o.maxSubreq ?? (Number(env.COLETA_MAX_SUBREQ) || 48)
-  const prazoMs = o.prazoMs ?? 25_000, intervaloMs = o.intervaloMs ?? 650, timeoutMs = o.timeoutMs ?? 20_000
+  // cron pode durar até 15 min de tempo real; esperar fetch não conta CPU. Para de iniciar tarefas após ~55 s
+  const prazoMs = o.prazoMs ?? 55_000, intervaloMs = o.intervaloMs ?? 650, timeoutMs = o.timeoutMs ?? 90_000
   const inicio = agora()
   let sub = 0
   // 1 (reserva) + 2 por tarefa + 1 (devolução eventual)
@@ -131,9 +132,9 @@ export async function tratarApi(req: Request, envBruto: Env, ctx?: { waitUntil(p
     if (perfil !== 'ADMINISTRADOR') return json({ erro: 'Apenas o perfil ADMINISTRADOR pode iniciar a sincronização.' }, 403)
     try {
       const id = await rpc<number>(env, 'iniciar_ciclo', { p_tipo: 'MANUAL' }, f)  // 1 subrequisição
-      // começa já, com o orçamento que sobrou; o cron continua a cada minuto
-      ctx?.waitUntil(processarFila(env, { maxSubreq: 44, prazoMs: 25_000, f }).catch((e) => console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) }))))
-      return json({ iniciado: true, sincronizacao: id, aviso: 'Coleta iniciada. O processamento continua automaticamente a cada minuto.' })
+      // o processamento fica com o cron (a cada minuto): uma requisição HTTP só tem 30 s de waitUntil
+      // e encerrá-la no meio deixava tarefas presas
+      return json({ iniciado: true, sincronizacao: id, aviso: 'Coleta iniciada. O processamento começa em até 1 minuto e continua automaticamente.' })
     } catch (e) {
       return json({ erro: `Falha ao iniciar a sincronização: ${String(e).replace(/^Error:\s*/, '').slice(0, 500)}` }, 500)
     }
@@ -152,15 +153,16 @@ export default {
   },
 
   // cron "* * * * *": às 05:00 UTC (02:00 BRT) abre o ciclo diário; em todos os minutos processa uma fatia
-  async scheduled(evento: { scheduledTime: number }, envBruto: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
+  async scheduled(evento: { scheduledTime: number }, envBruto: Env, _ctx: { waitUntil(p: Promise<unknown>): void }) {
     const env = normalizar(envBruto)
     if (!configurado(env)) return
-    ctx.waitUntil((async () => {
+    // o runtime aguarda a promessa do scheduled() por até 15 min de tempo real
+    try {
       const d = new Date(evento.scheduledTime)
       let orcamento = Number(env.COLETA_MAX_SUBREQ) || 48
       if (d.getUTCHours() === 5 && d.getUTCMinutes() === 0) { await rpc(env, 'iniciar_ciclo', { p_tipo: 'DIARIA' }); orcamento -= 1 }
       const r = await processarFila(env, { maxSubreq: orcamento })
       if (r.reservadas) console.log(JSON.stringify({ nivel: 'INFO', msg: 'fatia processada', ...r }))
-    })().catch((e) => console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) }))))
+    } catch (e) { console.log(JSON.stringify({ nivel: 'ERRO', msg: String(e) })) }
   },
 }
