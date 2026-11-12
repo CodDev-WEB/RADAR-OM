@@ -62,7 +62,7 @@ async function lerTudo(env: Env, view: string, f: typeof fetch): Promise<unknown
       headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!),
                  'accept-profile': 'radar', range: `${ini}-${ini + 999}`, 'range-unit': 'items' },
     })
-    if (!r.ok) throw new Error(`falha ao ler ${view}: HTTP ${r.status}`)
+    if (!r.ok) throw new Error(`falha ao ler radar.${view}: HTTP ${r.status} — ${(await r.text()).slice(0, 300)}`)
     const lote = (await r.json()) as unknown[]
     out.push(...lote)
     if (lote.length < 1000) return out
@@ -70,10 +70,19 @@ async function lerTudo(env: Env, view: string, f: typeof fetch): Promise<unknown
 }
 
 /** monta o snapshot no formato que a interface consome */
-export async function montarSnapshot(env: Env, f: typeof fetch = fetch) {
+export const VIEWS_API = ['api_oms', 'api_uasgs_ext', 'api_atas', 'api_itens', 'api_fornecedores', 'api_saldos', 'api_unidades', 'api_adesoes', 'api_contratos', 'api_sync', 'api_dashboard'] as const
+
+/** testa cada view isoladamente — mostra exatamente qual consulta falha e por quê */
+export async function diagnosticar(env: Env, f: typeof fetch = fetch) {
+  return Promise.all(VIEWS_API.map(async (view) => {
+    const r = await f(`${env.SUPABASE_URL}/rest/v1/${view}?select=*&limit=1`, { headers: { ...cabecalhosChave(env.SUPABASE_SERVICE_ROLE_KEY!), 'accept-profile': 'radar' } })
+    return { view, ok: r.ok, status: r.status, detalhe: r.ok ? undefined : (await r.text()).slice(0, 300) }
+  }))
+}
+
+async function montarSnapshot(env: Env, f: typeof fetch = fetch) {
   const [oms, uasgsExt, atas, itens, forn, saldos, unidades, adesoes, contratos, sync, dash] = await Promise.all(
-    ['api_oms', 'api_uasgs_ext', 'api_atas', 'api_itens', 'api_fornecedores', 'api_saldos', 'api_unidades', 'api_adesoes', 'api_contratos', 'api_sync', 'api_dashboard']
-      .map((v) => lerTudo(env, v, f)))
+    VIEWS_API.map((v) => lerTudo(env, v, f)))
   return {
     geradoEm: new Date().toISOString(), modo: 'producao',
     oms, uasgsExt, atas, itens, saldos, unidades, adesoes, contratos, sync, dash: dash[0] ?? {},
@@ -98,7 +107,14 @@ export async function tratarApi(req: Request, envBruto: Env, f: typeof fetch = f
   const perfil = await perfilDoUsuario(env, req, f)
   if (!perfil) return json({ erro: 'Faça login com um usuário ativo no RADAR OM.' }, 401)
 
-  if (req.method === 'GET' && url.pathname === '/api/snapshot') return json({ ...(await montarSnapshot(env, f)), perfil })
+  if (req.method === 'GET' && url.pathname === '/api/snapshot') {
+    try { return json({ ...(await montarSnapshot(env, f)), perfil }) }
+    catch (e) {
+      // usuário autenticado vê a causa (sem chaves); detalhe completo por view em /api/diagnostico
+      return json({ erro: `Falha ao consultar o banco: ${String(e).replace(/^Error:\s*/, '')}`, diagnostico: await diagnosticar(env, f) }, 500)
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/diagnostico') return json({ perfil, views: await diagnosticar(env, f) })
 
   if (req.method === 'POST' && url.pathname === '/api/sincronizar-agora') {
     if (perfil !== 'ADMINISTRADOR') return json({ erro: 'Apenas o perfil ADMINISTRADOR pode iniciar a sincronização.' }, 403)

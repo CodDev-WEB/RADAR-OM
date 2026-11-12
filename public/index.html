@@ -127,6 +127,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 // ---------- carregamento: modo demonstração (sem backend) ou produção (Supabase + login) ----------
 const SESS = {get(){try{return JSON.parse(sessionStorage.getItem('radar-om-sessao')||'null')}catch(e){return null}}, set(v){try{sessionStorage.setItem('radar-om-sessao',JSON.stringify(v))}catch(e){}}, clear(){try{sessionStorage.removeItem('radar-om-sessao')}catch(e){}}};
 let CFG = {modo:'demonstracao'};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function telaLogin(msg){
   document.getElementById('titulo').textContent='Entrar no RADAR OM';
   document.getElementById('view').innerHTML=`<div class="panel" style="max-width:420px"><h2>Acesso restrito</h2><p class="note">Use o e-mail e a senha cadastrados pelo administrador do RADAR OM.</p>
@@ -145,7 +146,10 @@ async function carregarDados(){
   const ses=SESS.get(); if(!ses){telaLogin(); return null}
   const r=await fetch('/api/snapshot',{headers:{authorization:'Bearer '+ses.access_token}});
   if(r.status===401){SESS.clear(); telaLogin('Sessão expirada ou usuário sem perfil ativo. Entre novamente.'); return null}
-  if(!r.ok){document.getElementById('view').innerHTML=`<div class="panel"><h2>Não foi possível carregar os dados</h2><p>${(await r.json().catch(()=>({}))).erro||'Erro HTTP '+r.status}</p></div>`; return null}
+  if(!r.ok){const b=await r.json().catch(()=>({}));
+    const diag=(b.diagnostico||[]).map(d=>`<tr><td class="mono">radar.${esc(d.view)}</td><td><span class="pill ${d.ok?'p-ok':'p-crit'}">${d.ok?'OK':'HTTP '+d.status}</span></td><td class="mono">${esc(d.detalhe||'')}</td></tr>`).join('');
+    document.getElementById('view').innerHTML=`<div class="panel"><h2>Não foi possível carregar os dados</h2><p>${esc(b.erro||'Erro HTTP '+r.status)}</p>${diag?`<h3>Diagnóstico das consultas</h3><div class="tw"><table><thead><tr><th>View</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody>${diag}</tbody></table></div>`:''}<p><button class="btn" type="button" id="btnSair">Sair</button></p></div>`;
+    document.getElementById('btnSair').onclick=()=>{SESS.clear();location.reload()}; return null}
   return r.json();
 }
 async function iniciar(){ const S0 = await carregarDados(); if(S0) app(S0); }

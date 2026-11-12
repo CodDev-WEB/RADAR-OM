@@ -4,7 +4,7 @@ import worker, { tratarApi } from '../src/worker.js'
 
 const psql = (sql: string) => execFileSync('su', ['postgres', '-c', `psql -h /tmp -d radar_om -At -c "${sql.replace(/"/g, '\\"')}"`]).toString().trim()
 const USERS: Record<string, string> = { 'tok-admin': '22222222-2222-2222-2222-222222222222', 'tok-consulta': '11111111-1111-1111-1111-111111111111' }
-let leituras = 0, authComChaveNova = 0
+let leituras = 0, authComChaveNova = 0, quebrarView = ''
 const fakeSupabase = (async (input: any, init: any = {}) => {
   const u = new URL(String(input)); const h = new Headers(init.headers)
   if (u.pathname === '/auth/v1/user') {
@@ -18,6 +18,7 @@ const fakeSupabase = (async (input: any, init: any = {}) => {
     const id = u.searchParams.get('usuario_id')!.replace('eq.', '')
     return new Response(psql(`select coalesce(json_agg(json_build_object('perfil',perfil)),'[]') from radar.perfis where ativo and usuario_id='${id}'`))
   }
+  if (view.startsWith(quebrarView) && quebrarView) return new Response(JSON.stringify({ code: 'PGRST205', message: `Could not find the table 'radar.${quebrarView}' in the schema cache` }), { status: 404 })
   leituras++
   const [a, b] = (h.get('range') || '0-999').split('-').map(Number)
   return new Response(psql(`select coalesce(json_agg(t),'[]') from (select * from radar.${view} offset ${a} limit ${b - a + 1}) t`))
@@ -50,6 +51,11 @@ ok((await tratarApi(req('/api/sincronizar-agora', 'tok-consulta', 'POST'), env, 
 ok(authComChaveNova === 0, 'chave sb_secret_ enviada só em apikey (nunca em Authorization)')
 const { cabecalhosChave } = await import('../src/armazenamento.js')
 ok(!!cabecalhosChave('eyJhbGciOi.x.y').authorization && !cabecalhosChave('sb_secret_x').authorization, 'chave legada (JWT) mantém Authorization; chave nova não')
+quebrarView = 'api_sync'
+const rErr = await tratarApi(req('/api/snapshot', 'tok-consulta'), env, fakeSupabase); const bErr: any = await rErr.json()
+ok(rErr.status === 500 && bErr.erro.includes('radar.api_sync') && bErr.erro.includes('PGRST205'), 'erro de consulta informa a view e a causa')
+ok(bErr.diagnostico.filter((d: any) => !d.ok).map((d: any) => d.view).join() === 'api_sync' && !JSON.stringify(bErr).includes('sb_secret'), 'diagnóstico aponta só a view com problema, sem expor chave')
+quebrarView = ''
 const html = await (await worker.fetch(req('/'), env)).text()
 ok(html.includes('RADAR OM'), 'rotas fora de /api servem a interface')
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTODOS OS TESTES PASSARAM'); process.exit(falhas ? 1 : 0)
