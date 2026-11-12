@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "radar-om",
+  "main": "collector/src/worker.ts",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "triggers": {
+    // 05:00 UTC = 02:00 BRT abre o ciclo diário; a cada 10 min (02h–08h50 BRT) processa a fila
+    "crons": ["0 5 * * *", "*/10 5-11 * * *"]
+  },
+  "vars": {
+    // preencha após criar o projeto Supabase (valores públicos)
+    "SUPABASE_URL": "",
+    "SUPABASE_ANON_KEY": ""
+  },
+  // secret (NÃO coloque aqui): wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": true }, "head_sampling_rate": 1 }
+}

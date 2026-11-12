@@ -1,0 +1,4 @@
+# copie para .dev.vars para rodar `npm run dev` com backend real
+SUPABASE_URL=https://SEU-PROJETO.supabase.co
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=

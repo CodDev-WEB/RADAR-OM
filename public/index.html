@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RADAR OM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Plano: painel institucional de inteligência de compras — verde-oliva como acento,
+   neutros cinza-esverdeados, títulos condensados, números tabulares.
+   Layout: menu lateral fixo + área de trabalho com cartões-resumo antes do detalhe. */
+:root{
+  --bg:#f3f4f0; --surface:#ffffff; --surface-2:#eceee7; --ink:#1c211a; --ink-2:#565d52; --line:#d7dacf;
+  --accent:#4b5d23; --accent-ink:#ffffff; --accent-soft:#e3e8d3;
+  --ok:#2f7a3e; --ok-soft:#dcefdf; --warn:#a46a00; --warn-soft:#f8ecd2; --crit:#b3261e; --crit-soft:#f8dcd9; --info:#2c5d8a; --info-soft:#dbe7f2;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141712; --surface:#1c201a; --surface-2:#252a22; --ink:#e7eadf; --ink-2:#a3ab9b; --line:#343a30;
+  --accent:#a9bf6a; --accent-ink:#141712; --accent-soft:#2c3420;
+  --ok:#7fc58b; --ok-soft:#1f3323; --warn:#e2b053; --warn-soft:#3a2f17; --crit:#f08a80; --crit-soft:#3d1f1c; --info:#86b4de; --info-soft:#1c2c3b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141712; --surface:#1c201a; --surface-2:#252a22; --ink:#e7eadf; --ink-2:#a3ab9b; --line:#343a30;
+  --accent:#a9bf6a; --accent-ink:#141712; --accent-soft:#2c3420;
+  --ok:#7fc58b; --ok-soft:#1f3323; --warn:#e2b053; --warn-soft:#3a2f17; --crit:#f08a80; --crit-soft:#3d1f1c; --info:#86b4de; --info-soft:#1c2c3b; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--body)}
+a{color:var(--accent)}
+button{font:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{display:grid;grid-template-columns:232px 1fr;height:100%}
+nav.side{background:var(--surface);border-right:1px solid var(--line);overflow:auto;padding:16px 10px;display:flex;flex-direction:column;gap:2px}
+.brand{font:700 26px/1 var(--display);letter-spacing:.04em;padding:4px 10px 2px}
+.brand span{color:var(--accent)}
+.brand-sub{font-size:11px;color:var(--ink-2);padding:0 10px 14px;line-height:1.35}
+nav.side a{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:6px;color:var(--ink);text-decoration:none}
+nav.side a .n{font:500 11px var(--mono);color:var(--ink-2);width:18px}
+nav.side a:hover{background:var(--surface-2)}
+nav.side a.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
+nav.side a.on .n{color:var(--accent)}
+main{overflow:auto;display:flex;flex-direction:column}
+header.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 24px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+header.top h1{font:600 24px/1.1 var(--display);margin:0;letter-spacing:.02em;flex:1;min-width:200px;text-wrap:balance}
+.meta{font-size:12px;color:var(--ink-2);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:5px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:6px 12px;border-radius:6px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.view{padding:20px 24px 48px;display:flex;flex-direction:column;gap:20px;max-width:1500px;width:100%}
+.scope{background:var(--info-soft);border:1px solid var(--line);border-left:4px solid var(--info);padding:10px 14px;border-radius:6px;font-size:13px}
+.grid{display:grid;gap:12px}
+.cards{grid-template-columns:repeat(auto-fill,minmax(178px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.card .k{font-size:12px;color:var(--ink-2)}
+.card .v{font:600 28px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.card .s{font-size:11px;color:var(--ink-2)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h2{font:600 18px/1.2 var(--display);margin:0;letter-spacing:.02em}
+.panel h3{font:600 15px/1.2 var(--display);margin:4px 0 0;letter-spacing:.02em;color:var(--ink-2);text-transform:uppercase}
+.two{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.note{font-size:12px;color:var(--ink-2)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--surface-2);font-weight:600;font-size:12px;white-space:nowrap;position:sticky;top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--accent-soft)}
+.mono{font-family:var(--mono);font-size:12px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.p-ok{background:var(--ok-soft);color:var(--ok)} .p-warn{background:var(--warn-soft);color:var(--warn)} .p-crit{background:var(--crit-soft);color:var(--crit)}
+.p-info{background:var(--info-soft);color:var(--info)} .p-mute{background:var(--surface-2);color:var(--ink-2)} .p-acc{background:var(--accent-soft);color:var(--accent)}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.filters label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-2)}
+input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-width:140px}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px 18px}
+.kv div{display:flex;flex-direction:column;border-bottom:1px dashed var(--line);padding-bottom:5px}
+.kv div.wide{grid-column:1/-1}
+.kv b{font-size:11px;color:var(--ink-2);font-weight:500}
+.kv span{font-variant-numeric:tabular-nums;word-break:break-word}
+.na{color:var(--ink-2);font-style:italic}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:8px 14px;cursor:pointer;color:var(--ink-2);border-bottom:3px solid transparent;font:600 15px var(--display);letter-spacing:.03em}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.bars{display:flex;flex-direction:column;gap:6px}
+.bar{display:grid;grid-template-columns:minmax(120px,38%) 1fr 92px;gap:8px;align-items:center;font-size:12px}
+.bar .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .t{height:14px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.bar .val{text-align:right;font-variant-numeric:tabular-nums}
+.calc{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);border-radius:6px;padding:10px 12px;line-height:1.7;white-space:pre-wrap}
+.crumb{font-size:12px;color:var(--ink-2)} .crumb a{cursor:pointer}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);max-width:560px;padding:18px 20px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.pager{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-2)}
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.cal div{background:var(--surface-2);border-radius:6px;padding:8px 10px}
+.cal b{font:600 16px var(--display)}
+@media (max-width:820px){.app{grid-template-columns:1fr}nav.side{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px}.brand-sub{display:none}nav.side a{white-space:nowrap}.view{padding:16px}.two{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="side" id="nav" aria-label="Módulos">
+    <div class="brand">RADAR <span>OM</span></div>
+    <div class="brand-sub">Monitoramento de pregões, atas e adesões das OM do Exército Brasileiro</div>
+  </nav>
+  <main>
+    <header class="top">
+      <h1 id="titulo">Dashboard</h1>
+      <div class="meta" id="meta"></div>
+      <button class="btn pri" id="btnSync" type="button">Atualizar dados agora</button>
+    </header>
+    <div class="view" id="view"></div>
+  </main>
+</div>
+<dialog id="dlg"><div id="dlgBody"></div><p><button class="btn" type="button" onclick="document.getElementById('dlg').close()">Fechar</button></p></dialog>
+<div class="toast" id="toast" role="status"></div>
+<script>
+"use strict";
+// ---------- carregamento: modo demonstração (sem backend) ou produção (Supabase + login) ----------
+const SESS = {get(){try{return JSON.parse(sessionStorage.getItem('radar-om-sessao')||'null')}catch(e){return null}}, set(v){try{sessionStorage.setItem('radar-om-sessao',JSON.stringify(v))}catch(e){}}, clear(){try{sessionStorage.removeItem('radar-om-sessao')}catch(e){}}};
+let CFG = {modo:'demonstracao'};
+function telaLogin(msg){
+  document.getElementById('titulo').textContent='Entrar no RADAR OM';
+  document.getElementById('view').innerHTML=`<div class="panel" style="max-width:420px"><h2>Acesso restrito</h2><p class="note">Use o e-mail e a senha cadastrados pelo administrador do RADAR OM.</p>
+  <form id="flogin" class="filters" style="flex-direction:column;align-items:stretch">
+   <label for="l_email">E-mail<input id="l_email" type="email" autocomplete="username" required></label>
+   <label for="l_senha">Senha<input id="l_senha" type="password" autocomplete="current-password" required></label>
+   <button class="btn pri" type="submit">Entrar</button><p class="note" id="l_msg" role="alert">${msg||''}</p></form></div>`;
+  document.getElementById('flogin').onsubmit=async e=>{e.preventDefault();
+    const r=await fetch(`${CFG.supabaseUrl}/auth/v1/token?grant_type=password`,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,'content-type':'application/json'},body:JSON.stringify({email:l_email.value,password:l_senha.value})}).catch(()=>null);
+    if(!r||!r.ok){document.getElementById('l_msg').textContent='E-mail ou senha incorretos.';return}
+    SESS.set(await r.json()); iniciar();};
+}
+async function carregarDados(){
+  CFG = await fetch('/api/config').then(r=>r.json()).catch(()=>({modo:'demonstracao'}));
+  if(CFG.modo!=='producao') return fetch('demo-snapshot.json').then(r=>r.json()).then(d=>({...d,modo:'demonstracao'}));
+  const ses=SESS.get(); if(!ses){telaLogin(); return null}
+  const r=await fetch('/api/snapshot',{headers:{authorization:'Bearer '+ses.access_token}});
+  if(r.status===401){SESS.clear(); telaLogin('Sessão expirada ou usuário sem perfil ativo. Entre novamente.'); return null}
+  if(!r.ok){document.getElementById('view').innerHTML=`<div class="panel"><h2>Não foi possível carregar os dados</h2><p>${(await r.json().catch(()=>({}))).erro||'Erro HTTP '+r.status}</p></div>`; return null}
+  return r.json();
+}
+async function iniciar(){ const S0 = await carregarDados(); if(S0) app(S0); }
+document.getElementById('view').innerHTML='<p class="note">Carregando dados…</p>';
+iniciar();
+function app(S){
+const HOJE = S.geradoEm.slice(0,10);
+// ---------- índices ----------
+const omPor = Object.fromEntries(S.oms.map(o=>[o.u,o]));
+const extPor = Object.fromEntries((S.uasgsExt||[]).map(o=>[o.u,o]));
+const ataPor = {}; S.atas.forEach((a,i)=>{a.i=i; ataPor[a.k]=a});
+const itensPorAta = {}; S.itens.forEach(it=>{(itensPorAta[it.k] ||= []).push(it)});
+const itemPor = Object.fromEntries(S.itens.map(i=>[i.id,i]));
+const saldoPor = Object.fromEntries((S.saldos||[]).map(s=>[s.item_id,s]));
+const unidPorItem = {}; (S.unidades||[]).forEach(u=>{(unidPorItem[u.item] ||= []).push(u)});
+const AD = (S.adesoes||[]).map((a,i)=>({...a,i}));
+const ctrPorAta = {}; (S.contratos||[]).forEach(c=>{ if(c.ata)(ctrPorAta[c.ata] ||= []).push(c)});
+const forn = S.fornecedores||{};
+// ---------- utilidades ----------
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const brl = v => v==null ? '<span class="na">não disponível</span>' : Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const brlC = v => v==null ? '—' : (Math.abs(v)>=1e6 ? 'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi' : Math.abs(v)>=1e3 ? 'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil' : brl(v));
+const num = v => v==null ? '<span class="na">não disponível</span>' : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+const dt = v => v ? v.slice(0,10).split('-').reverse().join('/') : '<span class="na">não disponível</span>';
+const NA = '<span class="na">não disponível na fonte</span>';
+const nomeU = u => omPor[u]?.n || extPor[u]?.n || u;
+const ehEB = u => !!omPor[u];
+const SIT = {VIGENTE:['Ata vigente','p-ok'],PROXIMA_DO_VENCIMENTO:['Próxima do vencimento','p-warn'],VENCIDA:['Ata vencida','p-mute'],CANCELADA:['Ata cancelada','p-crit'],EXCLUIDA_NA_FONTE:['Excluída na fonte','p-crit'],A_INICIAR:['A iniciar','p-info'],SEM_VIGENCIA_INFORMADA:['Sem vigência','p-mute']};
+const sitPill = s => `<span class="pill ${SIT[s]?.[1]||'p-mute'}">${SIT[s]?.[0]||esc(s)}</span>`;
+const SAL = {CONFERE_COM_A_FONTE:['Confere com a fonte','p-ok'],DIVERGENTE_DA_FONTE:['Divergente da fonte','p-crit'],NAO_ACEITA_ADESAO:['Não aceita adesão','p-mute']};
+const toast = m => {const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600)};
+const omLink = u => `<a href="#om-${esc(u)}">${esc(nomeU(u))}</a> <span class="mono">${esc(u)}</span>${ehEB(u)?'':' <span class="pill p-info">fora do Exército</span>'}`;
+function bars(rows, fmt=v=>v.toLocaleString('pt-BR')){
+  if(!rows.length) return '<p class="note">Sem registros na base atual.</p>';
+  const max = Math.max(...rows.map(r=>r[1]))||1;
+  return '<div class="bars">'+rows.map(([l,v])=>`<div class="bar"><span class="l" title="${esc(l)}">${esc(l)}</span><span class="t"><i style="width:${Math.max(2,100*v/max)}%"></i></span><span class="val">${fmt(v)}</span></div>`).join('')+'</div>';
+}
+function agrupa(lista, chave, val=()=>1){const m={}; lista.forEach(x=>{const k=chave(x); m[k]=(m[k]||0)+val(x)}); return Object.entries(m).sort((a,b)=>b[1]-a[1]);}
+function tabela(cols, rows, {click, id, pag=25}={}){
+  const tid = id||('t'+Math.random().toString(36).slice(2,8));
+  const st = {p:0};
+  const render = () => {
+    const el = document.getElementById(tid); if(!el) return;
+    const tot = rows.length, pags = Math.max(1,Math.ceil(tot/pag)); st.p=Math.min(st.p,pags-1);
+    const fatia = rows.slice(st.p*pag, st.p*pag+pag);
+    el.innerHTML = `<div class="tw"><table><thead><tr>${cols.map(c=>`<th class="${c.n?'num':''}">${c.h}</th>`).join('')}</tr></thead><tbody>${
+      fatia.length? fatia.map((r,i)=>`<tr ${click?`class="click" data-i="${st.p*pag+i}" tabindex="0"`:''}>${cols.map(c=>`<td class="${c.n?'num':''}">${c.f(r)}</td>`).join('')}</tr>`).join('')
+      : `<tr><td colspan="${cols.length}" class="note">Nenhum registro encontrado com estes filtros.</td></tr>`}</tbody></table></div>
+      <div class="pager"><span>${tot.toLocaleString('pt-BR')} registro(s)</span>${pags>1?`<button class="btn" type="button" data-p="-1">Anterior</button><span>página ${st.p+1} de ${pags}</span><button class="btn" type="button" data-p="1">Próxima</button>`:''}
+      <button class="btn" type="button" data-csv="1">Copiar CSV</button></div>`;
+    el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{st.p+=+b.dataset.p; if(st.p<0)st.p=0; render()});
+    el.querySelector('[data-csv]').onclick=()=>copiarCSV(cols,rows);
+    if(click) el.querySelectorAll('tr.click').forEach(tr=>{const go=()=>click(rows[+tr.dataset.i]); tr.onclick=go; tr.onkeydown=e=>{if(e.key==='Enter')go()}});
+  };
+  setTimeout(render);
+  return `<div id="${tid}"></div>`;
+}
+function copiarCSV(cols, rows){
+  const txt = s => String(s).replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').trim();
+  const linhas = [cols.map(c=>txt(c.h)), ...rows.map(r=>cols.map(c=>txt(c.csv? c.csv(r) : c.f(r))))];
+  const csv = linhas.map(l=>l.map(v=>/[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v).join(';')).join('\n');
+  navigator.clipboard.writeText(csv).then(()=>toast(`${rows.length} linha(s) copiadas em CSV (separador ;) — cole no Excel`),()=>toast('O navegador recusou a cópia. Selecione a tabela e copie manualmente.'));
+}
+const FONTE_ATA = a => `<a href="${esc(a.link||'#')}" target="_blank" rel="noopener">PNCP</a> · Compras.gov.br, coletado ${dt(a.col)}`;
+
+// ---------- módulos ----------
+const MODULOS = [
+ ['dashboard','Dashboard'],['oms','Organizações Militares'],['pregoes','Pregões'],['atas','Atas de Registro de Preços'],
+ ['adesoes','Adesões / Caronas'],['empenhos','Empenhos'],['saldos','Saldos e Quantidades'],['vencimentos','Vencimentos'],
+ ['fornecedores','Fornecedores'],['pesquisa','Pesquisa Avançada'],['relatorios','Relatórios'],['integracoes','Integrações'],['admin','Administração']];
+if(!document.querySelector('nav.side a'))document.getElementById('nav').insertAdjacentHTML('beforeend', MODULOS.map(([h,t],i)=>`<a href="#${h}" data-h="${h}"><span class="n">${String(i+1).padStart(2,'0')}</span>${t}</a>`).join(''));
+const sync = S.sync?.[0];
+document.getElementById('meta').innerHTML = `<span><span class="dot"></span>Última atualização bem-sucedida: ${dt(sync?.finalizada_em)} ${sync?.finalizada_em?.slice(11,16)||''}</span><span>Novos: ${(sync?.reg_novos||0).toLocaleString('pt-BR')} · Erros: ${sync?.reg_erros||0}</span>`;
+document.getElementById('btnSync').onclick = async () => {
+  if(S.modo==='producao'){ const ses=SESS.get(); const r=await fetch('/api/sincronizar-agora',{method:'POST',headers:{authorization:'Bearer '+(ses&&ses.access_token)}}); const b=await r.json().catch(()=>({}));
+    toast(r.ok?`Sincronização iniciada. ${b.restantes||0} tarefa(s) seguem na fila.`:(b.erro||'Falha ao iniciar a sincronização.')); return; } document.getElementById('dlgBody').innerHTML = `<h2 style="font:600 20px var(--display);margin:0 0 8px">Atualizar dados agora</h2><p>Na versão implantada, este botão chama <span class="mono">POST /api/sincronizar-agora</span> no coletor (Cloudflare Worker), permitido só ao perfil ADMINISTRADOR. O coletor consulta as APIs oficiais e atualiza o banco; a página não precisa ficar aberta.</p><p class="note">Modo demonstração: o backend ainda não foi configurado, então não há sincronização. Configure SUPABASE_URL, SUPABASE_ANON_KEY e o secret SUPABASE_SERVICE_ROLE_KEY no Worker.</p>`; document.getElementById('dlg').showModal(); };
+
+const V = {};
+V.dashboard = () => {
+  const d = S.dash, vig = S.atas.filter(a=>['VIGENTE','PROXIMA_DO_VENCIMENTO'].includes(a.sit)), adEB = AD.filter(a=>a.aderente_exercito);
+  const valCat = agrupa(S.itens.filter(i=>ataPor[i.k] && ['VIGENTE','PROXIMA_DO_VENCIMENTO'].includes(ataPor[i.k].sit)), i=>i.c? i.c : `(não classificado · ${i.g==='SERVICOS'?'serviço':'material'})`, i=>+i.vt||0).slice(0,10);
+  const porRM = agrupa(adEB, a=>a.rm_aderente? a.rm_aderente+'ª RM' : 'RM pendente');
+  const porOM = agrupa(adEB, a=>a.nome_aderente).slice(0,8);
+  const porForn = agrupa(AD, a=>a.fornecedor||'—', a=>+a.valor_adesao_estimado||0);
+  const porSit = agrupa(S.atas, a=>SIT[a.sit]?.[0]||a.sit);
+  const mes = agrupa(AD, a=>a.data_aprovacao.slice(0,7)).sort((a,b)=>a[0]<b[0]?-1:1);
+  const prox = S.atas.filter(a=>a.sit==='PROXIMA_DO_VENCIMENTO').sort((a,b)=>a.dias-b.dias);
+  const rankA = Object.values(adEB.reduce((m,a)=>{const r=m[a.codigo_uasg_aderente] ||= {u:a.codigo_uasg_aderente,n:a.nome_aderente,q:0,v:0,atas:new Set(),f:new Set()}; r.q++; r.v+= +a.valor_adesao_estimado||0; r.atas.add(a.chave_ata); r.f.add(a.ni_fornecedor); return m},{})).sort((a,b)=>b.q-a.q);
+  const rankG = Object.values(AD.filter(a=>a.gerenciadora_exercito).reduce((m,a)=>{const r=m[a.codigo_uasg_gerenciadora] ||= {u:a.codigo_uasg_gerenciadora,n:a.nome_gerenciadora,atas:new Set(),oms:new Set(),q:0,v:0}; r.atas.add(a.chave_ata); r.oms.add(a.codigo_uasg_aderente); r.q++; r.v+= +a.valor_adesao_estimado||0; return m},{})).sort((a,b)=>b.q-a.q);
+  const valVig = vig.reduce((s,a)=>s+(+a.valor||0),0);
+  return `
+  ${S.modo==='demonstracao'?'<div class="scope"><b>Modo demonstração:</b> o backend Supabase ainda não foi configurado neste ambiente. Os dados abaixo são a coleta real de 12/11/2026, sem atualização automática.</div>':''}<div class="scope"><b>${S.modo==='demonstracao'?'Base de demonstração (coleta real de 12/11/2026)':'Base atual'}:</b> cadastro oficial completo das ${d.om_monitoradas} UASGs do Exército; todas as atas do <a href="#om-160171">8º BEC</a> (2024–2026) e seus itens de 2025; duas atas com adesões validadas item a item (Cmdo 10ª RM e 1º CGEO); ${S.contratos.length} contratos PNCP vinculados a atas. A carga nacional completa é feita pelo coletor diário. Os números abaixo se referem a esta base.</div>
+  <div class="grid cards">
+    ${[['OM monitoradas',d.om_monitoradas,'UASGs do órgão 52121 (Cmdo Ex)'],['Pregões identificados',new Set(S.atas.map(a=>a.pncpCompra||a.compra)).size,'compras com ata na base'],['Atas vigentes',d.atas_vigentes,'inclui próximas do vencimento'],['Atas vencidas',d.atas_vencidas,'vigência da ata encerrada'],
+       ['Adesões identificadas',d.adesoes_identificadas,'autorizações aprovadas pelo gerenciador'],['OM que aderiram a atas',d.om_que_aderiram,'somente UASGs do Exército'],['Valor total registrado',brlC(+d.valor_total_registrado),'atas de gerenciadoras do Exército'],
+       ['Valor das adesões',brlC(+d.valor_adesoes_estimado),'estimado: qtd. autorizada × preço registrado'],['Valor empenhado identificado',d.valor_empenhado_identificado==null?'—':brlC(+d.valor_empenhado_identificado),'nenhum empenho vinculado a item ainda'],['Valor registrado em atas vigentes',brlC(valVig),'saldo real depende de empenhos — não estimado']]
+     .map(([k,v,s])=>`<div class="card"><span class="k">${k}</span><span class="v">${typeof v==='number'?v.toLocaleString('pt-BR'):v}</span><span class="s">${s}</span></div>`).join('')}
+  </div>
+  <div class="grid two">
+    <div class="panel"><h2>Adesões por Região Militar (OM aderente)</h2>${bars(porRM)}<p class="note">RM inferida do Centro de Gestão (CGCFEx) de vínculo da UASG — pendente de validação.</p></div>
+    <div class="panel"><h2>Adesões por Comando Militar de Área</h2>${bars(agrupa(adEB,a=>a.cma_aderente||'Pendente'))}</div>
+    <div class="panel"><h2>Adesões por OM aderente</h2>${bars(porOM)}</div>
+    <div class="panel"><h2>Evolução mensal das adesões</h2>${bars(mes)}</div>
+    <div class="panel"><h2>Valores registrados por categoria (atas vigentes)</h2>${bars(valCat, v=>brlC(v))}<p class="note">Classificação automática por regras; itens sem regra aparecem como não classificados.</p></div>
+    <div class="panel"><h2>Valor de adesões por fornecedor</h2>${bars(porForn, v=>brlC(v))}</div>
+    <div class="panel"><h2>Atas por situação</h2>${bars(porSit)}</div>
+    <div class="panel"><h2>Atas próximas do vencimento</h2>${tabela([{h:'Ata',f:a=>esc(a.num)},{h:'Gerenciadora',f:a=>esc(nomeU(a.ger))},{h:'Vence',f:a=>dt(a.vf)},{h:'Dias',n:1,f:a=>a.dias}],prox,{click:a=>location.hash='ata-'+a.i,pag:6})}</div>
+  </div>
+  <div class="panel"><h2>OM que mais pegaram carona</h2>${tabela([{h:'Posição',n:1,f:r=>rankA.indexOf(r)+1},{h:'OM',f:r=>omLink(r.u)},{h:'Qtd. adesões',n:1,f:r=>r.q},{h:'Valor total aderido (estimado)',n:1,f:r=>brl(r.v)},{h:'Qtd. atas',n:1,f:r=>r.atas.size},{h:'Fornecedores',n:1,f:r=>r.f.size}],rankA,{pag:10})}</div>
+  <div class="panel"><h2>OM que mais disponibilizaram atas para adesões</h2>${tabela([{h:'OM gerenciadora',f:r=>omLink(r.u)},{h:'Qtd. atas',n:1,f:r=>r.atas.size},{h:'OM aderentes',n:1,f:r=>r.oms.size},{h:'Adesões recebidas',n:1,f:r=>r.q},{h:'Valor identificado (estimado)',n:1,f:r=>brl(r.v)}],rankG,{pag:10})}</div>`;
+};
+
+V.oms = () => {
+  const f = {q:'',rm:'',uf:''};
+  const lista = () => S.oms.filter(o=>(!f.q||(o.n+' '+o.u).toLowerCase().includes(f.q.toLowerCase()))&&(!f.rm||String(o.rm)===f.rm)&&(!f.uf||o.uf===f.uf));
+  const ufs=[...new Set(S.oms.map(o=>o.uf))].sort();
+  setTimeout(()=>{['q','rm','uf'].forEach(k=>document.getElementById('f_'+k).oninput=e=>{f[k]=e.target.value; document.getElementById('omt').innerHTML=tabelaOM()})});
+  const nAt = u => S.atas.filter(a=>a.ger===u).length, nAd = u => AD.filter(a=>a.codigo_uasg_aderente===u).length;
+  const tabelaOM = () => tabela([{h:'UASG',f:o=>`<span class="mono">${o.u}</span>`},{h:'Organização Militar',f:o=>esc(o.n)},{h:'RM',f:o=>o.rm?`${o.rm}ª <span class="pill ${o.met==='VALIDADO_MANUAL'?'p-ok':'p-warn'}">${o.met==='VALIDADO_MANUAL'?'validada':'inferida'}</span>`:'<span class="pill p-mute">pendente</span>'},{h:'CMA',f:o=>o.cma||'—'},{h:'UF',f:o=>o.uf},{h:'Município',f:o=>esc(o.mun)},{h:'Atas gerenciadas',n:1,f:o=>nAt(o.u)},{h:'Adesões feitas',n:1,f:o=>nAd(o.u)}],lista(),{click:o=>location.hash='om-'+o.u});
+  return `<div class="panel"><div class="filters">
+    <label for="f_q">Buscar por nome ou UASG<input id="f_q" placeholder="ex.: 8 BATALHAO ou 160171"></label>
+    <label for="f_rm">Região Militar<select id="f_rm"><option value="">Todas</option>${[...Array(12)].map((_,i)=>`<option value="${i+1}">${i+1}ª RM</option>`).join('')}</select></label>
+    <label for="f_uf">Estado<select id="f_uf"><option value="">Todos</option>${ufs.map(u=>`<option>${u}</option>`).join('')}</select></label></div>
+    <div id="omt">${tabelaOM()}</div>
+    <p class="note">Fonte: <span class="mono">/modulo-uasg/1_consultarUasg?cnpjCpfOrgao=00394452000103</span> (Compras.gov.br). Pertencimento ao Exército definido pelo órgão SIASG 52121, nunca pelo nome.</p></div>`;
+};
+
+function fichaOM(u){
+  const o = omPor[u] || extPor[u] || {u,n:u};
+  const ger = S.atas.filter(a=>a.ger===u), adR = AD.filter(a=>a.codigo_uasg_gerenciadora===u), adF = AD.filter(a=>a.codigo_uasg_aderente===u);
+  const ctr = S.contratos.filter(c=>c.u===u);
+  const vig = ger.filter(a=>['VIGENTE','PROXIMA_DO_VENCIMENTO'].includes(a.sit));
+  const fornG = new Set(ger.flatMap(a=>(itensPorAta[a.k]||[]).map(i=>i.f)).filter(Boolean));
+  let aba = 'g';
+  const corpo = () => aba==='g' ? `
+    <h3>Atas que a OM gerencia</h3>${tabela([{h:'Ata',f:a=>esc(a.num)},{h:'Pregão',f:a=>esc(a.compra)},{h:'Objeto',f:a=>esc((a.obj||'').slice(0,110))},{h:'Vigência',f:a=>dt(a.vi)+' a '+dt(a.vf)},{h:'Situação',f:a=>sitPill(a.sit)},{h:'Valor',n:1,f:a=>brl(a.valor)}],ger,{click:a=>location.hash='ata-'+a.i})}
+    <h3>Organizações que pegaram carona nas atas desta OM</h3>${tabela([{h:'OM aderente',f:a=>omLink(a.codigo_uasg_aderente)},{h:'Ata',f:a=>esc(a.numero_ata)},{h:'Item',f:a=>esc(a.numero_item)},{h:'Qtd. autorizada',n:1,f:a=>num(a.quantidade_aprovada)},{h:'Valor estimado',n:1,f:a=>brl(a.valor_adesao_estimado)},{h:'Aprovação',f:a=>dt(a.data_aprovacao)},{h:'Situação',f:a=>`<span class="pill ${a.contrato_pncp?'p-ok':'p-warn'}">${esc(a.situacao_adesao)}</span>`}],adR,{click:a=>location.hash='adesao-'+a.i})}`
+  : `<h3>Atas de outras organizações às quais esta OM aderiu</h3>${tabela([{h:'Gerenciadora',f:a=>omLink(a.codigo_uasg_gerenciadora)},{h:'Ata',f:a=>esc(a.numero_ata)},{h:'Objeto',f:a=>esc((a.objeto||'').slice(0,90))},{h:'Item',f:a=>esc(a.numero_item)},{h:'Qtd. autorizada',n:1,f:a=>num(a.quantidade_aprovada)},{h:'Valor estimado',n:1,f:a=>brl(a.valor_adesao_estimado)},{h:'Situação',f:a=>`<span class="pill ${a.contrato_pncp?'p-ok':'p-warn'}">${esc(a.situacao_adesao)}</span>`}],adF,{click:a=>location.hash='adesao-'+a.i})}
+    <h3>Contratos da OM decorrentes de atas (PNCP)</h3>${tabela([{h:'Contrato PNCP',f:c=>`<span class="mono">${esc(c.k)}</span>`},{h:'Fruto de adesão',f:c=>c.fa?'<span class="pill p-acc">sim</span>':'não (participante/gerenciadora)'},{h:'Ata',f:c=>`<span class="mono">${esc(c.ata||'—')}</span>`},{h:'Fornecedor',f:c=>esc(c.fn)},{h:'Valor global',n:1,f:c=>brl(c.v)},{h:'Assinatura',f:c=>dt(c.ass)}],ctr)}`;
+  setTimeout(()=>document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{aba=b.dataset.a; document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b)); document.getElementById('omcorpo').innerHTML=corpo()}));
+  return `<div class="crumb"><a href="#oms">Organizações Militares</a> › ${esc(o.n)}</div>
+  <div class="panel"><h2>${esc(o.n)}</h2>${omPor[u]?'':'<p class="scope">Esta UASG não pertence ao cadastro do Comando do Exército (órgão 52121). Aparece porque aderiu a uma ata de OM do Exército.</p>'}
+  <div class="kv"><div><b>Código UASG</b><span class="mono">${esc(u)}</span></div><div><b>Região Militar</b><span>${o.rm? o.rm+'ª RM · '+(o.met==='VALIDADO_MANUAL'?'validada':'inferida pelo CGCFEx de vínculo, pendente de validação') : '<span class="na">pendente</span>'}</span></div>
+  <div><b>Comando Militar de Área</b><span>${o.cma||'<span class="na">pendente</span>'}</span></div><div><b>Município / UF</b><span>${esc(o.mun||'—')} / ${esc(o.uf||'—')}</span></div>
+  <div><b>Centro de gestão (polo, fonte oficial)</b><span>${esc(o.polo||'—')}</span></div><div><b>Guarnição</b><span class="na">não disponível na fonte</span></div></div>
+  <div class="grid cards">${[['Atas gerenciadas',ger.length],['Atas vigentes',vig.length],['Atas vencidas',ger.filter(a=>a.sit==='VENCIDA').length],['Adesões realizadas',adF.length],['Adesões recebidas',adR.length],['Fornecedores (atas)',fornG.size],['Valor registrado',brlC(ger.reduce((s,a)=>s+(+a.valor||0),0))],['Valor aderido (est.)',brlC(adF.reduce((s,a)=>s+(+a.valor_adesao_estimado||0),0))],['Valores empenhados',ger.length?'—':'—']].map(([k,v])=>`<div class="card"><span class="k">${k}</span><span class="v">${typeof v==='number'?v.toLocaleString('pt-BR'):v}</span></div>`).join('')}</div>
+  <div class="tabs" role="tablist"><button class="on" type="button" data-a="g">COMO GERENCIADORA</button><button type="button" data-a="a">COMO ADERENTE</button></div>
+  <div id="omcorpo" style="display:flex;flex-direction:column;gap:10px">${corpo()}</div></div>`;
+}
+
+V.pregoes = () => {
+  const g = Object.values(S.atas.reduce((m,a)=>{const k=a.pncpCompra||a.ger+':'+a.compra; const r=m[k] ||= {k,ger:a.ger,compra:a.compra,obj:a.obj,mod:a.mod,atas:[],link:a.linkC}; r.atas.push(a); return m},{}));
+  g.forEach(p=>{p.valor=p.atas.reduce((s,a)=>s+(+a.valor||0),0); p.vf=p.atas.map(a=>a.vf).sort().pop(); p.forn=new Set(p.atas.flatMap(a=>(itensPorAta[a.k]||[]).map(i=>i.f))).size; p.ad=AD.filter(x=>p.atas.some(a=>a.k===x.chave_ata)); p.nit=p.atas.reduce((s,a)=>s+(+a.nit||0),0);
+    p.sit = p.atas.some(a=>a.sit==='PROXIMA_DO_VENCIMENTO')?'PROXIMA_DO_VENCIMENTO':p.atas.some(a=>a.sit==='VIGENTE')?'VIGENTE':'VENCIDA'});
+  g.sort((a,b)=>(b.vf||'').localeCompare(a.vf||''));
+  return `<div class="panel"><h2>Pregões com atas na base</h2><p class="note">Um pregão SRP gera uma ata por fornecedor. A situação abaixo é a das ATAS do pregão (vigência da ata ≠ vigência do pregão). Situação do processo, data de abertura e valor homologado vêm do módulo de contratações (endpoint mapeado; coleta prevista no sincronizador).</p>
+  ${tabela([{h:'Pregão',f:p=>esc(p.compra)},{h:'OM responsável',f:p=>esc(nomeU(p.ger))},{h:'UASG',f:p=>`<span class="mono">${p.ger}</span>`},{h:'Objeto',f:p=>esc((p.obj||'').slice(0,100))},{h:'Itens',n:1,f:p=>p.nit},{h:'Atas',n:1,f:p=>p.atas.length},{h:'Fornecedores',n:1,f:p=>p.forn},{h:'Valor registrado',n:1,f:p=>brl(p.valor)},{h:'Fim da última ata',f:p=>dt(p.vf)},{h:'Situação das atas',f:p=>sitPill(p.sit)},{h:'Adesões',n:1,f:p=>p.ad.length},{h:'Processo oficial',f:p=>p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener">PNCP</a>`:'—'}],g,{click:p=>location.hash='ata-'+p.atas[0].i})}</div>`;
+};
+
+V.atas = () => {
+  const f={q:'',sit:'',ger:''};
+  const lista=()=>S.atas.filter(a=>(!f.sit||a.sit===f.sit)&&(!f.ger||a.ger===f.ger)&&(!f.q||((a.obj||'')+' '+a.num+' '+a.compra+' '+(a.pncp||'')).toLowerCase().includes(f.q.toLowerCase())));
+  const t=()=>tabela([{h:'Ata',f:a=>esc(a.num)},{h:'Pregão',f:a=>esc(a.compra)},{h:'Gerenciadora',f:a=>esc(nomeU(a.ger))},{h:'Objeto',f:a=>esc((a.obj||'').slice(0,110))},{h:'Vigência',f:a=>dt(a.vi)+' a '+dt(a.vf)},{h:'Dias',n:1,f:a=>a.dias},{h:'Situação',f:a=>sitPill(a.sit)},{h:'Valor',n:1,f:a=>brl(a.valor)},{h:'PNCP',f:a=>a.pncp?'<span class="pill p-ok">publicada</span>':'<span class="pill p-warn">sem nº PNCP</span>'}],lista(),{click:a=>location.hash='ata-'+a.i});
+  setTimeout(()=>['q','sit','ger'].forEach(k=>document.getElementById('a_'+k).oninput=e=>{f[k]=e.target.value; document.getElementById('atat').innerHTML=t()}));
+  const gers=[...new Set(S.atas.map(a=>a.ger))];
+  return `<div class="panel"><h2>Catálogo de atas</h2><div class="filters"><label for="a_q">Objeto, número da ata ou pregão<input id="a_q" placeholder="ex.: pneu, 00032/2025"></label>
+  <label for="a_sit">Situação<select id="a_sit"><option value="">Todas</option>${Object.entries(SIT).map(([k,[l]])=>`<option value="${k}">${l}</option>`).join('')}</select></label>
+  <label for="a_ger">Gerenciadora<select id="a_ger"><option value="">Todas</option>${gers.map(g=>`<option value="${g}">${esc(nomeU(g))}</option>`).join('')}</select></label></div><div id="atat">${t()}</div></div>`;
+};
+
+function fichaAta(i){
+  const a=S.atas[i]; if(!a) return '<p>Ata não encontrada.</p>';
+  const its=itensPorAta[a.k]||[], ad=AD.filter(x=>x.chave_ata===a.k), ct=ctrPorAta[a.pncp]||[];
+  return `<div class="crumb"><a href="#atas">Atas</a> › Ata ${esc(a.num)} — ${esc(nomeU(a.ger))}</div>
+  <div class="panel"><h2>Ata ${esc(a.num)} ${sitPill(a.sit)}</h2>
+  <h3>Identificação</h3><div class="kv">
+   <div><b>Órgão gerenciador</b><span>${omPor[a.ger]?'Comando do Exército':'—'}</span></div><div><b>OM gerenciadora</b><span>${omLink(a.ger)}</span></div>
+   <div><b>Número do pregão</b><span>${esc(a.compra)}</span></div><div><b>Modalidade</b><span>${esc(a.mod||'—')}</span></div>
+   <div><b>Identificador PNCP da ata</b><span class="mono">${esc(a.pncp)||'<span class="na">ata ainda sem número PNCP</span>'}</span></div><div><b>Identificador PNCP da compra</b><span class="mono">${esc(a.pncpCompra||'—')}</span></div>
+   <div><b>Processo administrativo</b><span>${ct.find(c=>c.proc)?esc(ct.find(c=>c.proc).proc)+' <span class="note">(do contrato PNCP)</span>':NA}</span></div><div><b>Critério de julgamento / Fundamentação</b><span>${NA} (módulo de contratações)</span></div>
+   <div><b>Data de assinatura</b><span>${dt(a.ass)}</span></div><div><b>Vigência</b><span>${dt(a.vi)} a ${dt(a.vf)} (${a.dias>=0?a.dias+' dias restantes':'encerrada há '+(-a.dias)+' dias'})</span></div>
+   <div><b>Valor total registrado</b><span>${brl(a.valor)}</span></div><div><b>Quantidade de itens</b><span>${a.nit??'—'}</span></div>
+   <div><b>Documento oficial</b><span>${a.link?`<a href="${esc(a.link)}" target="_blank" rel="noopener">Ata no PNCP</a>`:''} ${a.linkC?` · <a href="${esc(a.linkC)}" target="_blank" rel="noopener">Edital e anexos no PNCP</a>`:''}</span></div>
+   <div><b>Origem do registro</b><span>${FONTE_ATA(a)} · atualizado na fonte ${dt(a.atu)}</span></div></div>
+   <p><b>Objeto:</b> ${esc(a.obj)}</p>
+  <h3>Itens</h3>${tabela([{h:'Item',f:x=>esc(x.n)},{h:'CATMAT/CATSER',f:x=>`<span class="mono">${x.cat??'—'}</span>`},{h:'Descrição',f:x=>esc(x.d)},{h:'Tipo',f:x=>esc(x.t)},{h:'Categoria',f:x=>x.c?esc(x.c):'<span class="na">não classificado</span>'},{h:'Qtd. registrada',n:1,f:x=>num(x.qr)},{h:'Valor unit.',n:1,f:x=>brl(x.vu)},{h:'Valor total',n:1,f:x=>brl(x.vt)},{h:'Fornecedor',f:x=>esc(forn[x.f]||x.f)+`<br><span class="mono">${esc(x.f)}</span>`},{h:'Saldo adesões',f:x=>saldoPor[x.id]?`<span class="pill ${SAL[saldoPor[x.id].status_saldo_adesoes]?.[1]}">${num(saldoPor[x.id].saldo_adesoes_fonte)}</span>`:'<span class="na">não coletado</span>'}],its,{click:x=>{if(saldoPor[x.id]) location.hash='saldo-'+x.id}})}
+  <p class="note">Marca, modelo, unidade de fornecimento e especificação técnica completa não vêm na consulta de itens da ata; estão nos documentos do edital (link acima).</p>
+  <h3>Adesões a esta ata</h3>${ad.length?tabela([{h:'OM aderente',f:x=>omLink(x.codigo_uasg_aderente)},{h:'Item',f:x=>esc(x.numero_item)},{h:'Qtd. autorizada',n:1,f:x=>num(x.quantidade_aprovada)},{h:'Valor estimado',n:1,f:x=>brl(x.valor_adesao_estimado)},{h:'Aprovação',f:x=>dt(x.data_aprovacao)},{h:'Situação',f:x=>`<span class="pill ${x.contrato_pncp?'p-ok':'p-warn'}">${esc(x.situacao_adesao)}</span>`}],ad,{click:x=>location.hash='adesao-'+x.i}):'<p class="note">Nenhuma adesão coletada para esta ata. Para atas do 8º BEC, a consulta de unidades mostrou que os itens testados não aceitam adesão.</p>'}
+  <h3>Contratos decorrentes (PNCP)</h3>${ct.length?tabela([{h:'Contrato',f:c=>`<span class="mono">${esc(c.k)}</span>`},{h:'OM contratante',f:c=>omLink(c.u)},{h:'Fruto de adesão',f:c=>c.fa?'<span class="pill p-acc">sim</span>':'não'},{h:'Valor global',n:1,f:c=>brl(c.v)},{h:'Assinatura',f:c=>dt(c.ass)}],ct):'<p class="note">Nenhum contrato vinculado na base atual.</p>'}</div>`;
+}
+
+const adCols = [{h:'OM aderente',f:a=>omLink(a.codigo_uasg_aderente)},{h:'OM gerenciadora',f:a=>esc(a.nome_gerenciadora)},{h:'Pregão',f:a=>esc(a.numero_compra+'/'+a.ano_compra)},{h:'Ata',f:a=>esc(a.numero_ata)},{h:'Item',f:a=>esc(a.numero_item)},{h:'Descrição',f:a=>esc((a.descricao||'').slice(0,70))},{h:'Qtd. autorizada',n:1,f:a=>num(a.quantidade_aprovada)},{h:'Valor unit.',n:1,f:a=>brl(a.valor_unitario)},{h:'Valor adesão (est.)',n:1,f:a=>brl(a.valor_adesao_estimado)},{h:'Fornecedor',f:a=>esc(a.fornecedor)},{h:'Aprovação',f:a=>dt(a.data_aprovacao)},{h:'Vencimento ata',f:a=>dt(a.vigencia_fim)},{h:'Situação',f:a=>`<span class="pill ${a.contrato_pncp?'p-ok':'p-warn'}">${esc(a.situacao_adesao)}</span>`}];
+V.adesoes = () => {
+  const f={q:'',rm:'',sit:'',eb:''};
+  const lista=()=>AD.filter(a=>(!f.rm||String(a.rm_aderente)===f.rm)&&(!f.sit||(f.sit==='C'?!!a.contrato_pncp:!a.contrato_pncp))&&(!f.eb||(f.eb==='s'?a.aderente_exercito:!a.aderente_exercito))&&(!f.q||[a.nome_aderente,a.nome_gerenciadora,a.numero_ata,a.fornecedor,a.objeto,a.descricao].join(' ').toLowerCase().includes(f.q.toLowerCase())));
+  setTimeout(()=>['q','rm','sit','eb'].forEach(k=>document.getElementById('d_'+k).oninput=e=>{f[k]=e.target.value; document.getElementById('adt').innerHTML=tabela(adCols,lista(),{click:a=>location.hash='adesao-'+a.i})}));
+  return `<div class="panel"><h2>Adesões identificadas</h2>
+  <p class="note">Fonte primária: <span class="mono">/modulo-arp/5_consultarAdesoesItem</span>, que informa as AUTORIZAÇÕES aprovadas pelo gerenciador. A contratação só é marcada quando o PNCP traz um contrato da mesma OM, fruto de adesão, vinculado à mesma ata. Autorizada não significa contratada.</p>
+  <div class="filters"><label for="d_q">OM, ata, fornecedor ou objeto<input id="d_q"></label>
+  <label for="d_rm">RM do aderente<select id="d_rm"><option value="">Todas</option>${[...Array(12)].map((_,i)=>`<option value="${i+1}">${i+1}ª RM</option>`).join('')}</select></label>
+  <label for="d_sit">Situação<select id="d_sit"><option value="">Todas</option><option value="C">Contratada (PNCP)</option><option value="A">Autorizada, sem contrato localizado</option></select></label>
+  <label for="d_eb">Aderente<select id="d_eb"><option value="">Todos</option><option value="s">Exército</option><option value="n">Outros órgãos</option></select></label></div>
+  <div id="adt">${tabela(adCols,lista(),{click:a=>location.hash='adesao-'+a.i})}</div></div>`;
+};
+
+function fichaAdesao(i){
+  const a=AD[i]; if(!a) return '<p>Adesão não encontrada.</p>';
+  const ata = ataPor[a.chave_ata], s = saldoPor[a.item_id];
+  const campo=(k,v)=>`<div class="${/Objeto|Descrição completa/.test(k)?'wide':''}"><b>${k}</b><span>${v}</span></div>`;
+  return `<div class="crumb"><a href="#adesoes">Adesões</a> › ${esc(a.nome_aderente)} → ata ${esc(a.numero_ata)}</div>
+  <div class="panel"><h2>Ficha da adesão <span class="pill ${a.contrato_pncp?'p-ok':'p-warn'}">${esc(a.situacao_adesao)}</span></h2>
+  <div class="kv">${[
+   ['OM aderente',omLink(a.codigo_uasg_aderente)],['UASG aderente',`<span class="mono">${a.codigo_uasg_aderente}</span>`],['OM gerenciadora',omLink(a.codigo_uasg_gerenciadora)],['UASG gerenciadora',`<span class="mono">${a.codigo_uasg_gerenciadora}</span>`],
+   ['Número / ano do pregão',esc(a.numero_compra+'/'+a.ano_compra)],['Número da ata',`${ata?`<a href="#ata-${ata.i}">${esc(a.numero_ata)}</a>`:esc(a.numero_ata)}`],['Identificador PNCP da ata',`<span class="mono">${esc(a.numero_controle_pncp_ata)}</span>`],['Processo administrativo',NA],
+   ['Objeto da contratação',esc(a.objeto)],['Item aderido',esc(a.numero_item)],['Código CATMAT/CATSER',`<span class="mono">${a.codigo_item_catalogo??'—'}</span>`],['Descrição completa do item',esc(a.descricao)],
+   ['Unidade de fornecimento',a.unidade_fornecimento?esc(a.unidade_fornecimento):NA],['Quantidade originalmente registrada (fornecedor)',num(a.quantidade_registrada)],['Quantidade solicitada na adesão',NA],['Quantidade autorizada',num(a.quantidade_aprovada)],
+   ['Quantidade efetivamente contratada',a.contrato_pncp?'<span class="na">contrato localizado; itens do contrato ainda não coletados</span>':NA],['Valor unitário registrado',brl(a.valor_unitario)],['Valor total da adesão',brl(a.valor_adesao_estimado)+' <span class="pill p-warn">estimado</span>'],
+   ['Fornecedor',esc(a.fornecedor)],['CNPJ do fornecedor',`<span class="mono">${esc(a.ni_fornecedor)}</span>`],['Data da solicitação',NA],['Data da autorização',dt(a.data_aprovacao)+' '+a.data_aprovacao.slice(11,16)],
+   ['Data da contratação',a.data_contratacao?dt(a.data_contratacao):NA],['Contrato PNCP',a.contrato_pncp?`<span class="mono">${esc(a.contrato_pncp)}</span> · ${brl(a.valor_contrato)}`:NA],['Data de vencimento da ata',dt(a.vigencia_fim)],['Situação da adesão',esc(a.situacao_adesao)]
+  ].map(([k,v])=>campo(k,v)).join('')}</div>
+  ${a.contrato_pncp && Math.abs(+a.valor_contrato - +a.valor_adesao_estimado) > 0.01 ? `<p class="scope">O valor do contrato (${brl(a.valor_contrato)}) difere do valor estimado da autorização (${brl(a.valor_adesao_estimado)}). O contrato pode abranger outros itens, período ou quantidade diferentes. Prevalece o contrato para o valor contratado.</p>`:''}
+  ${s?`<h3>Saldo do item após as adesões</h3><div class="calc">${memoria(s)}</div>`:''}
+  <p class="note">Origem: Compras.gov.br <span class="mono">5_consultarAdesoesItem</span> (autorização) e PNCP <span class="mono">/v1/contratos</span> (contratação). Coletado em ${dt(a.coletado_em)}. Campos marcados como não disponíveis não são publicados pelas APIs abertas consultadas.</p></div>`;
+}
+
+function memoria(s){
+  return `QUANTIDADE REGISTRADA ORIGINALMENTE ........ ${num(s.qtd_registrada)}   (gerenciadora ${num(s.qtd_gerenciadora)} + participantes ${num(s.qtd_participantes||0)})
+LIMITE PARA ADESÕES (fonte) .................. ${num(s.limite_adesao_fonte)}   ${s.limite_confere_dobro?'= 2 × registrado (art. 86 §5º, Lei 14.133) ✔':'≠ 2 × registrado — conferir'}
+(−) QUANTIDADE AUTORIZADA A ADERENTES ........ ${num(s.qtd_autorizada_adesoes)}   (${s.n_autorizacoes} autorizações, ${s.n_aderentes} órgãos)
+(=) SALDO DE ADESÕES CALCULADO ............... ${num(s.saldo_adesoes_calculado)}
+    SALDO DE ADESÕES INFORMADO PELA FONTE .... ${num(s.saldo_adesoes_fonte)}   → ${SAL[s.status_saldo_adesoes]?.[0]||s.status_saldo_adesoes}
+
+VALOR REGISTRADO ............................. ${brl(s.valor_registrado).replace(/<[^>]+>/g,'')}
+(−) VALOR AUTORIZADO A ADERENTES (estimado) .. ${brl(s.valor_autorizado_adesoes_estimado).replace(/<[^>]+>/g,'')}
+(=) VALOR DO SALDO DE ADESÕES (estimado) ..... ${brl(s.valor_saldo_adesoes_estimado).replace(/<[^>]+>/g,'')}
+
+QUANTIDADE EMPENHADA ......................... ${s.qtd_empenhada==null?'não identificada (nenhum empenho vinculado a este item)':num(s.qtd_empenhada)}
+QUANTIDADE ENTREGUE .......................... sem fonte
+QUANTIDADE DISPONÍVEL PARA O REGISTRO ........ ${s.qtd_disponivel_estimada==null?'não determinável sem empenhos vinculados':num(s.qtd_disponivel_estimada)}
+
+${s.aviso}`;
+}
+
+V.saldos = () => `<div class="panel"><h2>Saldos e quantidades por item</h2>
+  <p class="note">Separação obrigatória: registrado, limite de adesão, autorizado a aderentes, empenhado e entregue. Empenho não entra no saldo sem vínculo comprovado com ata e item. O saldo é sempre calculado e comparado ao informado pela fonte.</p>
+  ${tabela([{h:'Ata',f:s=>esc(ataPor[s.chave_ata]?.num)},{h:'Gerenciadora',f:s=>esc(nomeU(ataPor[s.chave_ata]?.ger))},{h:'Item',f:s=>esc(s.numero_item)},{h:'Descrição',f:s=>esc((s.descricao||'').slice(0,60))},{h:'Registrado',n:1,f:s=>num(s.qtd_registrada)},{h:'Limite adesões',n:1,f:s=>num(s.limite_adesao_fonte)},{h:'Autorizado',n:1,f:s=>num(s.qtd_autorizada_adesoes)},{h:'Saldo calculado',n:1,f:s=>num(s.saldo_adesoes_calculado)},{h:'Saldo fonte',n:1,f:s=>num(s.saldo_adesoes_fonte)},{h:'Conferência',f:s=>`<span class="pill ${SAL[s.status_saldo_adesoes]?.[1]}">${SAL[s.status_saldo_adesoes]?.[0]}</span>`},{h:'Empenhado',n:1,f:s=>s.qtd_empenhada==null?'—':num(s.qtd_empenhada)}],S.saldos,{click:s=>location.hash='saldo-'+s.item_id})}
+  <p class="note">Somente itens com consulta de unidades realizada aparecem aqui. Os 2.792 itens do 8º BEC entram à medida que o coletor consulta <span class="mono">3_consultarUnidadesItem</span> (limite de ~100 requisições/min).</p></div>`;
+function fichaSaldo(id){
+  const s=saldoPor[id], it=itemPor[id], a=ataPor[s?.chave_ata]; if(!s) return '<p>Item sem saldo coletado.</p>';
+  const us=unidPorItem[id]||[];
+  return `<div class="crumb"><a href="#saldos">Saldos</a> › Ata ${esc(a?.num)} item ${esc(s.numero_item)}</div>
+  <div class="panel"><h2>${esc(s.descricao)}</h2><div class="calc">${memoria(s)}</div>
+  <h3>Unidades do item (gerenciadora e participantes)</h3>${tabela([{h:'UASG',f:u=>omLink(u.u)},{h:'Tipo',f:u=>esc(u.tipo)},{h:'Qtd. registrada',n:1,f:u=>num(u.qr)},{h:'Aceita adesão',f:u=>u.aceita?'sim':'não'}],us)}
+  <h3>Adesões do item</h3>${tabela(adCols.filter(c=>!['Descrição','Ata','Pregão'].includes(c.h)),AD.filter(x=>x.item_id===id),{click:x=>location.hash='adesao-'+x.i})}
+  <p class="note">Fonte: <span class="mono">3_consultarUnidadesItem</span> e <span class="mono">5_consultarAdesoesItem</span> · ${a?`<a href="#ata-${a.i}">abrir a ata</a>`:''}</p></div>`;
+}
+
+V.empenhos = () => `<div class="panel"><h2>Empenhos</h2>
+  <p>O endpoint <span class="mono">/modulo-arp/4_consultarEmpenhosSaldoItem</span> (Compras.gov.br) foi localizado na especificação oficial e testado. Para a ata testada (8º BEC, 43007/2024) a resposta veio vazia, então a estrutura dos campos ainda não foi observada com dados.</p>
+  <p>Por isso o RADAR OM guarda o retorno bruto e <b>não</b> desconta empenho de saldo enquanto o vínculo com ata e item não for comprovado. O SIAFI não é consultado: não há integração oficial autorizada.</p>
+  <div class="grid cards"><div class="card"><span class="k">Empenhos vinculados a itens</span><span class="v">0</span><span class="s">aguardando primeira resposta com dados</span></div><div class="card"><span class="k">Contratos PNCP vinculados a atas</span><span class="v">${S.contratos.length}</span><span class="s">estágio contratação, não empenho</span></div></div></div>`;
+
+V.vencimentos = () => {
+  const vig = S.atas.filter(a=>a.dias>=0 && !['CANCELADA','EXCLUIDA_NA_FONTE'].includes(a.sit));
+  const marcos=[['D7',7],['D15',15],['D30',30],['D60',60],['D90',90]];
+  const cont=marcos.map(([m,d],i)=>[m,vig.filter(a=>a.dias<=d && a.dias>(i?marcos[i-1][1]:-1)).length]);
+  const meses=agrupa(vig.filter(a=>a.dias<=365),a=>a.vf.slice(0,7)).sort((a,b)=>a[0]<b[0]?-1:1);
+  const f={d:'90'};
+  const lista=()=>S.atas.filter(a=>f.d==='venc'?a.sit==='VENCIDA':(a.dias>=0&&a.dias<=+f.d)).sort((a,b)=>a.dias-b.dias);
+  const cols=[{h:'OM gerenciadora',f:a=>esc(nomeU(a.ger))},{h:'Ata',f:a=>esc(a.num)},{h:'Pregão',f:a=>esc(a.compra)},{h:'Objeto',f:a=>esc((a.obj||'').slice(0,80))},{h:'Vencimento',f:a=>dt(a.vf)},{h:'Dias restantes',n:1,f:a=>`<span class="pill ${a.dias<=7?'p-crit':a.dias<=30?'p-warn':'p-info'}">${a.dias}</span>`},{h:'Fornecedor',f:a=>esc([...new Set((itensPorAta[a.k]||[]).map(i=>forn[i.f]))].join(', ')||'—')},{h:'Valor registrado',n:1,f:a=>brl(a.valor)},{h:'Saldo disponível estimado',f:()=>'<span class="na">não estimado sem empenhos</span>'}];
+  setTimeout(()=>document.getElementById('v_d').oninput=e=>{f.d=e.target.value; document.getElementById('vt').innerHTML=tabela(cols,lista(),{click:a=>location.hash='ata-'+a.i})});
+  const op = (S.saldos||[]).filter(s=>s.aceita_adesao && +s.saldo_adesoes_fonte>0 && ['VIGENTE','PROXIMA_DO_VENCIMENTO'].includes(ataPor[s.chave_ata]?.sit));
+  return `<div class="grid cards">${cont.map(([m,n])=>`<div class="card"><span class="k">Vencem em até ${m.slice(1)} dias</span><span class="v">${n}</span><span class="s">alerta ${m}</span></div>`).join('')}<div class="card"><span class="k">Atas vencidas</span><span class="v">${S.atas.filter(a=>a.sit==='VENCIDA').length}</span></div></div>
+  <div class="panel"><h2>Calendário de vencimentos (próximos 12 meses)</h2><div class="cal">${meses.map(([m,n])=>`<div><b>${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+m.slice(5)-1]}/${m.slice(0,4)}</b><br>${n} ata(s)</div>`).join('')}</div></div>
+  <div class="panel"><h2>Atas por período de vencimento</h2><div class="filters"><label for="v_d">Período<select id="v_d"><option value="7">Até 7 dias</option><option value="15">Até 15 dias</option><option value="30">Até 30 dias</option><option value="60">Até 60 dias</option><option value="90" selected>Até 90 dias</option><option value="365">Até 12 meses</option><option value="venc">Vencidas</option></select></label></div><div id="vt">${tabela(cols,lista(),{click:a=>location.hash='ata-'+a.i})}</div></div>
+  <div class="panel"><h2>Atas vigentes com possibilidade de adesão</h2>
+  <p class="scope">Itens de atas vigentes que a fonte marca como <b>aceita adesão</b> e com saldo de adesões maior que zero. Ata vigente não significa adesão possível: cada caso exige análise jurídica (art. 86 da Lei 14.133/2021 e Decreto 11.462/2023) e autorização do órgão gerenciador.</p>
+  ${tabela([{h:'Gerenciadora',f:s=>esc(nomeU(ataPor[s.chave_ata].ger))},{h:'Ata',f:s=>esc(ataPor[s.chave_ata].num)},{h:'Item',f:s=>esc((s.descricao||'').slice(0,60))},{h:'Saldo de adesões (fonte)',n:1,f:s=>num(s.saldo_adesoes_fonte)},{h:'Valor do saldo (est.)',n:1,f:s=>brl(s.valor_saldo_adesoes_estimado)},{h:'Vence',f:s=>dt(ataPor[s.chave_ata].vf)},{h:'Conferência',f:s=>`<span class="pill ${SAL[s.status_saldo_adesoes]?.[1]}">${SAL[s.status_saldo_adesoes]?.[0]}</span>`}],op,{click:s=>location.hash='saldo-'+s.item_id})}</div>`;
+};
+
+V.fornecedores = () => {
+  const m={};
+  S.itens.forEach(i=>{if(!i.f)return; const r=m[i.f] ||= {ni:i.f,n:forn[i.f]||i.f,itens:0,atas:new Set(),v:0,ad:0,vad:0,ctr:0}; r.itens++; r.atas.add(i.k); r.v+= +i.vt||0});
+  AD.forEach(a=>{const r=m[a.ni_fornecedor]; if(r){r.ad++; r.vad+= +a.valor_adesao_estimado||0}});
+  S.contratos.forEach(c=>{const r=m[c.f] ||= {ni:c.f,n:c.fn,itens:0,atas:new Set(),v:0,ad:0,vad:0,ctr:0}; r.ctr++});
+  const l=Object.values(m).sort((a,b)=>b.v-a.v);
+  return `<div class="panel"><h2>Fornecedores</h2>${tabela([{h:'Fornecedor',f:r=>esc(r.n)},{h:'CNPJ',f:r=>`<span class="mono">${esc(r.ni)}</span>`},{h:'Itens registrados',n:1,f:r=>r.itens},{h:'Atas',n:1,f:r=>r.atas.size},{h:'Valor registrado',n:1,f:r=>brl(r.v)},{h:'Adesões',n:1,f:r=>r.ad},{h:'Valor aderido (est.)',n:1,f:r=>brl(r.vad)},{h:'Contratos PNCP',n:1,f:r=>r.ctr}],l)}</div>`;
+};
+
+V.pesquisa = () => {
+  const f={txt:'',grp:'',cat:'',forn:'',sit:'',dias:'',vmin:'',ger:''};
+  const cats=[...new Set(S.itens.map(i=>i.c).filter(Boolean))].sort();
+  const lista=()=>S.itens.filter(i=>{const a=ataPor[i.k]; if(!a) return false;
+    return (!f.txt||((i.d||'')+' '+(a.obj||'')).toLowerCase().includes(f.txt.toLowerCase()))&&(!f.grp||i.g===f.grp)&&(!f.cat||i.c===f.cat)&&(!f.forn||((forn[i.f]||'')+' '+i.f).toLowerCase().includes(f.forn.toLowerCase()))
+      &&(!f.sit||a.sit===f.sit)&&(!f.dias||(a.dias>=0&&a.dias<=+f.dias))&&(!f.vmin||(+i.vt||0)>=+f.vmin)&&(!f.ger||a.ger===f.ger)});
+  const cols=[{h:'Gerenciadora',f:i=>esc(nomeU(ataPor[i.k].ger))},{h:'Ata',f:i=>esc(ataPor[i.k].num)},{h:'Item',f:i=>esc(i.n)},{h:'Descrição',f:i=>esc((i.d||'').slice(0,90))},{h:'Grupo',f:i=>esc(i.g)},{h:'Categoria',f:i=>esc(i.c||'—')},{h:'Fornecedor',f:i=>esc(forn[i.f]||i.f)},{h:'Qtd.',n:1,f:i=>num(i.qr)},{h:'Valor total',n:1,f:i=>brl(i.vt)},{h:'Vence',f:i=>dt(ataPor[i.k].vf)},{h:'Situação',f:i=>sitPill(ataPor[i.k].sit)}];
+  setTimeout(()=>Object.keys(f).forEach(k=>document.getElementById('p_'+k).oninput=e=>{f[k]=e.target.value; document.getElementById('pt').innerHTML=tabela(cols,lista(),{click:i=>location.hash='ata-'+ataPor[i.k].i})}));
+  return `<div class="panel"><h2>Pesquisa avançada de itens</h2><p class="note">Combine filtros livremente. Exemplos: grupo MANUTENÇÃO + vence em 30 dias; categoria Pneus e acessórios + situação vigente; valor mínimo 100000.</p>
+  <div class="filters">
+   <label for="p_txt">Texto (item ou objeto)<input id="p_txt" placeholder="ex.: retroescavadeira"></label>
+   <label for="p_grp">Tipo de despesa<select id="p_grp"><option value="">Todos</option><option value="AQUISICAO">Aquisição</option><option value="MANUTENCAO">Manutenção</option><option value="SERVICOS">Serviços</option><option value="OUTROS">Outros</option></select></label>
+   <label for="p_cat">Categoria<select id="p_cat"><option value="">Todas</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></label>
+   <label for="p_forn">Fornecedor (nome ou CNPJ)<input id="p_forn"></label>
+   <label for="p_sit">Situação da ata<select id="p_sit"><option value="">Todas</option>${Object.entries(SIT).map(([k,[l]])=>`<option value="${k}">${l}</option>`).join('')}</select></label>
+   <label for="p_dias">Vence em até (dias)<input id="p_dias" type="number" min="0" placeholder="30"></label>
+   <label for="p_vmin">Valor total mínimo (R$)<input id="p_vmin" type="number" min="0" placeholder="100000"></label>
+   <label for="p_ger">Gerenciadora<select id="p_ger"><option value="">Todas</option>${[...new Set(S.atas.map(a=>a.ger))].map(g=>`<option value="${g}">${esc(nomeU(g))}</option>`).join('')}</select></label></div>
+  <div id="pt">${tabela(cols,lista(),{click:i=>location.hash='ata-'+ataPor[i.k].i})}</div>
+  <p class="note">Exportação: "Copiar CSV" copia o resultado completo do filtro (separador ponto e vírgula) para colar no Excel. A exportação direta para .xlsx e PDF é feita pelo backend na versão implantada; esta página publicada não pode iniciar downloads.</p></div>`;
+};
+
+V.relatorios = () => {
+  const R=[['Relatório nacional de adesões','adesoes',()=>[adCols,AD]],['Relatório de atas vigentes','atas',()=>[[{h:'Ata',f:a=>esc(a.num)},{h:'Gerenciadora',f:a=>esc(nomeU(a.ger))},{h:'Objeto',f:a=>esc(a.obj)},{h:'Fim',f:a=>dt(a.vf)},{h:'Valor',n:1,f:a=>brl(a.valor)},{h:'Fonte',f:a=>esc(a.link||'')}],S.atas.filter(a=>['VIGENTE','PROXIMA_DO_VENCIMENTO'].includes(a.sit))]],
+   ['Relatório de atas vencidas','atas',()=>[[{h:'Ata',f:a=>esc(a.num)},{h:'Gerenciadora',f:a=>esc(nomeU(a.ger))},{h:'Objeto',f:a=>esc(a.obj)},{h:'Fim',f:a=>dt(a.vf)},{h:'Valor',n:1,f:a=>brl(a.valor)}],S.atas.filter(a=>a.sit==='VENCIDA')]],
+   ['Relatório de atas próximas do vencimento','atas',()=>[[{h:'Ata',f:a=>esc(a.num)},{h:'Gerenciadora',f:a=>esc(nomeU(a.ger))},{h:'Fim',f:a=>dt(a.vf)},{h:'Dias',n:1,f:a=>a.dias}],S.atas.filter(a=>a.sit==='PROXIMA_DO_VENCIMENTO')]],
+   ['Relatório de manutenção','itens',()=>[[{h:'Ata',f:i=>esc(ataPor[i.k]?.num)},{h:'Item',f:i=>esc(i.d)},{h:'Categoria',f:i=>esc(i.c)},{h:'Valor',n:1,f:i=>brl(i.vt)}],S.itens.filter(i=>i.g==='MANUTENCAO')]],
+   ['Relatório de aquisição','itens',()=>[[{h:'Ata',f:i=>esc(ataPor[i.k]?.num)},{h:'Item',f:i=>esc(i.d)},{h:'Categoria',f:i=>esc(i.c||'—')},{h:'Valor',n:1,f:i=>brl(i.vt)}],S.itens.filter(i=>i.g==='AQUISICAO')]],
+   ['Relatório de serviços','itens',()=>[[{h:'Ata',f:i=>esc(ataPor[i.k]?.num)},{h:'Item',f:i=>esc(i.d)},{h:'Categoria',f:i=>esc(i.c||'—')},{h:'Valor',n:1,f:i=>brl(i.vt)}],S.itens.filter(i=>i.g==='SERVICOS')]],
+   ['Relatório de saldos','saldos',()=>[[{h:'Ata',f:s=>esc(ataPor[s.chave_ata]?.num)},{h:'Item',f:s=>esc(s.descricao)},{h:'Saldo calculado',n:1,f:s=>num(s.saldo_adesoes_calculado)},{h:'Saldo fonte',n:1,f:s=>num(s.saldo_adesoes_fonte)},{h:'Memória',f:s=>esc(s.memoria_calculo)}],S.saldos]],
+   ['Relatório de fornecedores','fornecedores',()=>[[{h:'CNPJ',f:r=>r[0]},{h:'Razão social',f:r=>esc(r[1])}],Object.entries(forn)]]];
+  setTimeout(()=>document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{const [c,r]=R[+b.dataset.r][2](); copiarCSV(c,r)}));
+  return `<div class="panel"><h2>Relatórios</h2><p class="note">Cada relatório copia os dados da base atual em CSV, com a coluna de origem quando disponível. Na versão implantada o backend gera Excel e PDF com filtros de período, OM, categoria e fornecedor.</p>
+  <div class="tw"><table><thead><tr><th>Relatório</th><th class="num">Registros</th><th></th></tr></thead><tbody>${R.map(([n,,g],i)=>`<tr><td>${n}</td><td class="num">${g()[1].length}</td><td><button class="btn" type="button" data-r="${i}">Copiar CSV</button></td></tr>`).join('')}
+  <tr><td>Relatório por OM / por Região Militar</td><td class="num">—</td><td><span class="note">use a ficha da OM ou o filtro de RM em Adesões</span></td></tr>
+  <tr><td>Relatório de empenhos</td><td class="num">0</td><td><span class="note">sem empenhos vinculados (ver Empenhos)</span></td></tr>
+  <tr><td>Relatório de oportunidades de adesão</td><td class="num">—</td><td><a href="#vencimentos">ver Vencimentos</a></td></tr></tbody></table></div></div>`;
+};
+
+V.integracoes = () => {
+  const E=[['Compras','/modulo-uasg/1_consultarUasg','UASGs do Exército (cnpjCpfOrgao)','OK','sem tamanhoPagina; 500/página'],['Compras','/modulo-uasg/2_consultarOrgao','Órgão 52121 = Comando do Exército','OK',''],
+   ['Compras','/modulo-arp/1_consultarARP','Atas por início de vigência','OK','janela ≤ 365 dias; filtro codigoOrgao ignorado'],['Compras','/modulo-arp/1.2_consultarARP_FimVigencia','Atas por fim de vigência','OK','base do monitoramento de vencimentos'],
+   ['Compras','/modulo-arp/1.1_consultarARP_Id','Ata por nº de controle PNCP','OK',''],['Compras','/modulo-arp/2_consultarARPItem','Itens por UASG e período','OK','maximoAdesao e quantidadeEmpenhada vieram 0 em 100% dos itens'],
+   ['Compras','/modulo-arp/2.1_consultarARPItem_Id','Itens de uma ata','OK',''],['Compras','/modulo-arp/3_consultarUnidadesItem','Gerenciadora, participantes, limite e saldo de adesões','OK','saldo confere com o cálculo nos 3 itens testados'],
+   ['Compras','/modulo-arp/4_consultarEmpenhosSaldoItem','Empenhos e saldo por ata','RESPONDE','retorno vazio na ata testada'],['Compras','/modulo-arp/5_consultarAdesoesItem','Adesões aprovadas por item','OK','exige ata + UASG + item; sem valor nem fornecedor'],
+   ['Compras','/modulo-contratacoes/1_consultarContratacoes_PNCP_14133','Pregões/contratações Lei 14.133','OK','16 contratações do 8º BEC em 2025'],['Compras','limite de taxa','HTTP 429, Retry-After: 10','—','≈ 100 requisições/minuto'],
+   ['PNCP','/v1/contratos','Contratos do Exército (cnpjOrgao)','OK','10.310 em 2026; traz frutoAdesao e nº da ata'],['PNCP','/v1/atas','Atas por vigência (cnpj, unidade)','OK com unidade','consulta nacional do Exército: HTTP 500 após 54 s'],
+   ['PNCP','/v1/atas/atualizacao, /v1/contratos/atualizacao','Consultas incrementais','mapeado','usado no ciclo diário'],['SIAFI','—','Empenhos/pagamentos','NÃO USADO','sem integração oficial autorizada']];
+  return `<div class="panel"><h2>Status das fontes oficiais</h2><p class="note">Testes reais em 12/11/2026. Fonte: especificação OpenAPI em dadosabertos.compras.gov.br/v3/api-docs e pncp.gov.br/api/consulta/v3/api-docs.</p>
+  ${tabela([{h:'Fonte',f:r=>r[0]},{h:'Endpoint',f:r=>`<span class="mono">${esc(r[1])}</span>`},{h:'Uso no RADAR OM',f:r=>esc(r[2])},{h:'Teste',f:r=>`<span class="pill ${r[3].startsWith('OK')?'p-ok':r[3]==='NÃO USADO'?'p-mute':'p-warn'}">${r[3]}</span>`},{h:'Observação',f:r=>esc(r[4])}],E,{pag:30})}</div>
+  <div class="panel"><h2>Histórico de sincronizações</h2>${tabela([{h:'#',n:1,f:s=>s.id},{h:'Tipo',f:s=>s.tipo},{h:'Início',f:s=>dt(s.iniciada_em)+' '+s.iniciada_em.slice(11,16)},{h:'Fim',f:s=>s.finalizada_em?dt(s.finalizada_em)+' '+s.finalizada_em.slice(11,16):'—'},{h:'Status',f:s=>`<span class="pill ${s.status==='SUCESSO'?'p-ok':'p-warn'}">${s.status}</span>`},{h:'Novos',n:1,f:s=>s.reg_novos},{h:'Atualizados',n:1,f:s=>s.reg_atualizados},{h:'Erros',n:1,f:s=>s.reg_erros},{h:'Observações',f:s=>esc(s.observacoes)}],S.sync)}</div>
+  <div class="panel"><h2>Ciclo diário</h2><div class="calc">02h00 BRT  início: cadastro de UASGs (2 req) → enfileira 509 UASGs + consultas incrementais do PNCP
+a cada 10 min até 08h50  processa uma fatia da fila (~120 tarefas), respeitando ~100 req/min
+  ATAS_UASG       atas com fim de vigência de ontem a +3 anos (janelas de 365 dias)
+  ITENS_ATA       só para atas novas ou alteradas (dataHoraAtualizacao)
+  UNIDADES_ITEM   limites e saldo de adesões por item
+  ADESOES_ITEM    só se o item aceita adesão E o saldo mudou desde a última coleta
+  PNCP contratos  contratos do Exército atualizados ontem; fruto de adesão a ata desconhecida → busca a ata (ex.: Marinha)
+fim  registra novos/atualizados/erros/429; tarefas com erro voltam com espera exponencial</div></div>`;
+};
+
+V.admin = () => {
+  const cl=S.itens.filter(i=>i.c).length;
+  return `<div class="panel"><h2>Administração</h2><div class="kv">
+   <div><b>Perfis de acesso</b><span>ADMINISTRADOR (total) · GESTOR (visualização e relatórios com permissões específicas) · CONSULTA (visualização e exportação)</span></div>
+   <div><b>Autenticação</b><span>Supabase Auth; políticas RLS no banco; credenciais das APIs só no backend</span></div>
+   <div><b>Classificação automática</b><span>${cl.toLocaleString('pt-BR')} de ${S.itens.length.toLocaleString('pt-BR')} itens (${Math.round(100*cl/S.itens.length)}%) por regras de descrição; o restante aguarda regra ou revisão manual</span></div>
+   <div><b>Vínculo OM → RM</b><span>${S.oms.filter(o=>o.rm).length} de ${S.oms.length} inferidos pelo CGCFEx de vínculo; ${S.oms.filter(o=>!o.rm).length} pendentes; 0 validados manualmente</span></div>
+   <div><b>Auditoria</b><span>alterações manuais (classificação, OM, perfis) registradas com usuário, antes e depois</span></div>
+   <div><b>Duplicidades</b><span>verificação por UASG + número da ata: nenhuma encontrada na base atual</span></div></div>
+   <h3>OM com Região Militar pendente</h3>${tabela([{h:'UASG',f:o=>`<span class="mono">${o.u}</span>`},{h:'OM',f:o=>esc(o.n)},{h:'UF',f:o=>o.uf},{h:'Polo informado',f:o=>esc(o.polo||'—')}],S.oms.filter(o=>!o.rm),{click:o=>location.hash='om-'+o.u})}</div>`;
+};
+
+// ---------- roteamento por hash ----------
+function rotear(){
+  const h = (location.hash||'#dashboard').slice(1);
+  let html, tit, mod=h;
+  if(h.startsWith('om-')){html=fichaOM(h.slice(3)); tit='Ficha da OM'; mod='oms'}
+  else if(h.startsWith('ata-')){html=fichaAta(+h.slice(4)); tit='Ficha da ata'; mod='atas'}
+  else if(h.startsWith('adesao-')){html=fichaAdesao(+h.slice(7)); tit='Ficha da adesão'; mod='adesoes'}
+  else if(h.startsWith('saldo-')){html=fichaSaldo(+h.slice(6)); tit='Saldo do item'; mod='saldos'}
+  else {const m=MODULOS.find(x=>x[0]===h)||MODULOS[0]; mod=m[0]; tit=m[1]; html=V[mod]()}
+  document.getElementById('titulo').textContent=tit;
+  document.getElementById('view').innerHTML=html;
+  document.querySelectorAll('nav.side a').forEach(a=>a.classList.toggle('on',a.dataset.h===mod));
+  document.querySelector('main').scrollTop=0;
+}
+addEventListener('hashchange',rotear); rotear();
+}
+</script>
+</body>
+</html>
